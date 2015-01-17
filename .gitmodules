@@ -1,0 +1,6 @@
+[submodule "ren-cxx-basics"]
+	path = ren-cxx-basics
+	url = ../ren-cxx-basics
+[submodule "ren-tupsupport"]
+	path = ren-tupsupport
+	url = ../ren-tupsupport
