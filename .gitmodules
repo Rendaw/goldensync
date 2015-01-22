@@ -4,3 +4,6 @@
 [submodule "ren-tupsupport"]
 	path = ren-tupsupport
 	url = ../ren-tupsupport
+[submodule "ren-cxx-filesystem"]
+	path = ren-cxx-filesystem
+	url = ../ren-cxx-filesystem
