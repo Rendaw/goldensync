@@ -2,7 +2,7 @@
 
 int main(int argc, char **argv)
 {
-	CoreT Core("test-back");
+	CoreT Core({"freg"}, Filesystem::PathT::Qualify("test-back"));
 	return 0;
 }
 

@@ -1,0 +1,181 @@
+rename: golden synch -> marble synch
+
+use a hidden file in .conf or some weirder directory (~/.gs_unique) to force an instance's uuid to be regenerated if it is moved
+
+prune mode
+	- no fs changes
+	- no new instances
+	- when all are in prune mode + completely synced, delete all non-head changes
+		ready = self has all changes
+			send + forward readies
+		completely synced = ready received for all known instances
+
+---------
+
+required state
+	id counters
+		node counter
+		change counter
+		data counter (used without instance?)
+	instances
+		instance id
+		instance name
+	(all ids except data are instance_id + relevant counter value)
+	change table
+		node id
+		change id
+		parent change id
+	missing table
+		node id
+		change id
+		last head id (node id + change id of head)
+		data id
+	read holds
+		data id
+	head table
+		node id
+		change id
+		nodename
+		is node
+		data id
+		parent dir
+		is writable
+		(cache split ids?)
+	data table
+		data id (also defines data path)
+		associated change
+		reference count (from heads and missings)
+	main transactions
+	config
+	nodes
+
+temp state
+	downloaded chunks
+	queue
+	subcomponent transactions
+
+
+
+---------------------
+core (all methods 1 thread only)
+	add instance (name)
+	get instance (name) -> id
+	create node
+		increment counter, return id
+	add change
+		save change in db + notify
+		delete missing for parent change
+		add missing + notify
+	define change
+		if meta
+			include in head update/create
+		update or create head if missing + notify
+		if list of chunks
+			if has reference
+				if one ref
+					if can cow copy
+						cow copy
+					else
+						copy
+				apply chunks -> new node, update head + reduce old node count
+		delete missing + notify
+	define change delete
+		delete missing + notify
+		delete head + notify
+	get missings
+	get head
+	get heads in dir w/ pagination
+	get, delete read hold
+	open node, read chunk, close node
+
+	-- lower level reads (get change x)
+
+fs component -> core
+	create file/dir
+		core->create node
+		core->create change
+		TRANSACT
+			core->add change
+			core->define change (no chunks + meta)
+
+	delete file/dir
+		core->create change
+		TRANSACT
+			core->add change
+			core->define change del
+
+	ls dir (main path)
+		get heads in dir
+			return head if change is this instance
+			return head if change is first ranked in split list
+			otherwise continue
+
+	ls dir (split path)
+		get heads in dir
+			return head if change is split instance
+
+	open file for reading
+		get read hold
+		open file
+		
+	read
+		read chunk
+		
+	close read file
+		close file
+		delete read hold
+
+	open node for writing
+		pass
+
+	write
+		core->create change
+		TRANSACT
+			core->add change
+			core->define change (chunk)
+		OR ...
+		write change to disk, on close or some time elapsed define + delete
+
+	close write file
+		pass
+
+	trunc/shorten
+
+	modify meta
+
+	stat
+	
+net component -> core
+	(
+		1. get name
+		2. get known instances
+		3. get directly connected instances
+		4. synch changes
+		5. start downloading missing
+	)
+	connect
+		request name
+	get change
+
+---------------------
+
+
+CONNECT
+
+
+ENTRY get a change x
+	if x in database
+		break
+	TRANS
+		store x in db
+		add hold for previous change node
+		if head is parent, update head to x
+		queue download x
+
+MASTER THREAD
+QUEUE download x
+	# store chunks in a change-id dir as separate numbered nodes
+	# before starting download, scan directory and bit array for fast check
+	if node for x exists
+		break
+	

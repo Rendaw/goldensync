@@ -2,6 +2,24 @@ return
 {
 	include = {'types.h'},
 	define = {
+		{
+			name = 'NodeIDT',
+			elements = 
+			{
+				{ 'Instance', 'InstanceIndexT' },
+				{ 'Node', 'NodeIndexT' },
+			},
+		},
+		
+		{
+			name = 'ChangeIDT',
+			elements = 
+			{
+				{ 'Instance', 'InstanceIndexT' },
+				{ 'Change', 'ChangeIndexT' },
+			},
+		},
+
 		{ 
 			name = 'GlobalChangeIDT', 
 			elements = 
@@ -10,13 +28,22 @@ return
 				{ 'ChangeID', 'ChangeIDT', },
 			},
 		},
+
+		{
+			name = 'ChangeT',
+			elements = 
+			{
+				{ 'ChangeID', 'GlobalChangeIDT' },
+				{ 'ParentID', 'ChangeIDT' },
+			},
+		},
 		
 		{ 
 			name = 'NodeMetaT', 
 			elements = 
 			{
 				{ 'Filename', 'std::string', },
-				{ 'ParentID', 'OptionalT<ChangeIDT>', },
+				{ 'DirID', 'OptionalT<NodeIDT>', },
 				{ 'Writable', 'bool', },
 				{ 'Executable', 'bool', },
 			},
@@ -26,10 +53,29 @@ return
 			name = 'HeadT', 
 			elements = 
 			{
-				{ 'StorageID', 'StorageIDT', },
+				{ 'ChangeID', 'GlobalChangeIDT', },
+				{ 'StorageID', 'OptionalT<StorageIDT>', },
 				{ 'Meta', 'NodeMetaT', },
 				{ 'CreateTimestamp', 'TimeT', },
 				{ 'ModifyTimestamp', 'TimeT', },
+			},
+		},
+
+		{
+			name = 'MissingT',
+			elements = 
+			{
+				{ 'ChangeID', 'GlobalChangeIDT', },
+				{ 'StorageID', 'OptionalT<StorageIDT>', },
+			},
+		},
+
+		{
+			name = 'StorageT',
+			elements =
+			{
+				{ 'StorgeID', 'StorageIDT', },
+				{ 'ReferenceCount', 'uint8_t', },
 			},
 		},
 	},

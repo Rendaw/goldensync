@@ -1,40 +1,88 @@
 #ifndef core_h
 #define core_h
 
+#include <list>
+
+#include "../ren-cxx-basics/function.h"
+#include "../ren-cxx-filesystem/path.h"
+
 #include "types.h"
+#include "structtypes.h"
+#include "coredatabase.h"
+#include "coretransactions.h"
 
-typedef std::tuple<size_t, std::string> ChunkT;
+template <typename SignatureT> struct NotifyT {};
 
-struct DefineHeadT
+template <typename ...ArgumentsT> struct NotifyT<void(ArgumentsT...)>
 {
-	struct TruncateT {};
-	VariantT<std::vector<ChunkT>, TruncateT> const &DataChanges;
-	NodeMetaT MetaChanges;
+	struct TokenT
+	{
+		public:
+			TokenT(TokenT &&Other);
+			TokenT(TokenT const &) = delete;
+			int &operator =(TokenT &&) = delete;
+			int &operator =(TokenT const &) = delete;
+			~TokenT(void);
+		friend struct NotifyT<ArgumentsT...>;
+		private:
+			TokenT(uint64_t ID, NotifyT<ArgumentsT...> *Base);
+			uint64_t ID;
+			NotifyT<ArgumentsT...> *Base;
+	};
+
+	~NotifyT(void);
+	TokenT Add(function<void(ArgumentsT...)> &&Function);
+	void Notify(ArgumentsT ...Arguments);
+
+	private:
+		struct ListenerT
+		{
+			function<void(ArgumentsT...)> Callback;
+			uint64_t ID;
+			ListenerT(function<void(ArgumentsT...)> &&Callback, uint64_t ID);
+		};
+		std::list<ListenerT> Listeners;
+		uint64_t IDCounter;
 };
-struct DeleteHeadT {};
 
-struct Core
+struct CoreT
 {
-	ListenersT<void(GlobalChangeIDT const &ChangeID, ChangeIDT const &ParentID)> ChangeAddListeners;
-	ListenersT<GlobalChangeIDT> MissingAddListeners;
-	ListenersT<GlobalChangeIDT> MissingRemoveListeners;
-	ListenersT<GlobalChangeIDT> HeadAddListeners;
-	ListenersT<GlobalChangeIDT> HeadRemoveListeners;
+	NotifyT<void(GlobalChangeIDT const &ChangeID, ChangeIDT const &ParentID)> ChangeAddListeners;
+	NotifyT<void(GlobalChangeIDT const &)> MissingAddListeners;
+	NotifyT<void(GlobalChangeIDT const &)> MissingRemoveListeners;
+	NotifyT<void(GlobalChangeIDT const &)> HeadAddListeners;
+	NotifyT<void(GlobalChangeIDT const &)> HeadRemoveListeners;
 
-	CoreT(void);
+	CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const &Root);
 	/*void AddInstance(std::string const &Name);
 	InstanceIDT AddInstance(std::string const &Name);*/
-	NodeIDT ReserveNode(void);
-	ChangeIDT ReserveChange(void);
-	void AddChange(GlobalChangeIDT const &ChangeID);
+	NodeIndexT ReserveNode(void);
+	ChangeIndexT ReserveChange(void);
+	void AddChange(GlobalChangeIDT const &ChangeID, ChangeIDT const &ParentID);
 	void DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, DeleteHeadT> const &Definition);
 	/*std::array<GlobalChangeIDT, PageSize> GetMissings(size_t Page);
 	HeadT GetHead(GlobalChangeIDT const &HeadID);
 	std::array<HeadT, PageSize> GetHeads(NodeIDT ParentID, OptionalT<InstanceIDT> Split);*/
 
 	private:
-		CoreDatabaseT Database;
-		CoreTransactionsT Transact;
+		std::unique_ptr<CoreDatabaseT> Database;
+		std::unique_ptr<CoreTransactionsT> Transact;
+
+		void TransactAddChange(
+			GlobalChangeIDT const &ChangeID,
+			ChangeIDT const &ParentID, 
+			OptionalT<ChangeIDT> const &HeadID,
+			OptionalT<StorageIDT> const &StorageID, 
+			OptionalT<size_t> const &StorageRefCount,
+			bool const &DeleteMissing);
+		void TransactUpdateDeleteHead(
+			OptionalT<StorageIDT> const &StorageID, 
+			OptionalT<size_t> const &StorageRefCount,
+			GlobalChangeIDT const &ChangeID,
+			OptionalT<ChangeIDT> const &DeleteParent,
+			OptionalT<HeadT> const &NewHead,
+			OptionalT<StorageIDT> const &NewStorageID,
+			VariantT<std::vector<ChunkT>, TruncateT> const &DataChanges);
 };
 
 #endif
