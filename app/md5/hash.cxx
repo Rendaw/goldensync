@@ -2,6 +2,8 @@
 
 #include <iomanip>
 
+#include "../../ren-cxx-filesystem/file.h"
+
 extern "C"
 {
 	#include "md5.h"
@@ -40,22 +42,22 @@ template <typename CallbackT> HashT FeedHash(CallbackT const &Feed)
 
 	Feed(Context);
 
-	fclose(File);
 	HashT Hash{};
 	cvs_MD5Final(&Hash[0], &Context);
+	return Hash;
 };
 
 HashT HashString(std::string const &String)
 {
 	return FeedHash([&](cvs_MD5Context &Context)
 	{
-		cvs_MD5Update(&Context, &String[0], static_cast<unsigned int>(String.size()));
+		cvs_MD5Update(&Context, (const unsigned char *)&String[0], static_cast<unsigned int>(String.size()));
 	});
 }
 
 OptionalT<std::pair<HashT, size_t>> HashFile(Filesystem::PathT const &Path)
 {
-	auto File(Filesystem::fopen_read(Path->Render().c_str()));
+	auto File(fopen_read(Path));
 	if (!File) return {};
 
 	size_t Size = 0;

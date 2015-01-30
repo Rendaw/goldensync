@@ -2,6 +2,8 @@ return
 {
 	include = {'types.h'},
 	define = {
+		------------------------
+		-- Data model ids
 		{
 			name = 'NodeIDT',
 			elements = 
@@ -29,6 +31,8 @@ return
 			},
 		},
 
+		------------------------
+		-- Data model
 		{
 			name = 'ChangeT',
 			elements = 
@@ -66,6 +70,7 @@ return
 			elements = 
 			{
 				{ 'ChangeID', 'GlobalChangeIDT', },
+				{ 'HeadID', 'OptionalT<ChangeIDT>', },
 				{ 'StorageID', 'OptionalT<StorageIDT>', },
 			},
 		},
@@ -77,6 +82,22 @@ return
 				{ 'StorgeID', 'StorageIDT', },
 				{ 'ReferenceCount', 'uint8_t', },
 			},
+		},
+		
+		------------------------
+		-- Misc
+		{
+			name = 'BytesChangeT',
+			elements = 
+			{
+				{ 'Offset', 'size_t', },
+				{ 'Bytes', 'std::vector<uint8_t>', },
+			},
+		},
+
+		{
+			name = 'TruncateT',
+			elements = {},
 		},
 	},
 }

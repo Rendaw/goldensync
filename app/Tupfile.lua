@@ -13,11 +13,16 @@ Define.Executable
 {
 	Name = 'goldensync',
 	BuildExtras = GeneratedHeaders,
+	LinkFlags = '-lsqlite3',
 	Sources = Item()
 		+ 'main.cxx'
 		+ 'core.cxx'
+		+ 'log.cxx'
 		+ 'md5/hash.cxx'
 		+ 'md5/md5.c'
+		,
+	Objects = Item()
+		+ FilesystemObjects
 		,
 }
 

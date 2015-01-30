@@ -64,11 +64,20 @@ unsigned short getCpuHash()
 // ---------------------------------------------
 // ---------------------------------------------
 
-CoreT::CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const &Root)
+CoreT::CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const &Root) : 
+	Root(Root), 
+	StorageRoot(Root.Enter("storage")),
+	Log("core")
 {
 	bool Create = !Root.Exists();
-	if (Create && !InstanceName) 
-		throw UserErrorT() << "You must specify an instance name for a new synch instance.";
+	if (Create)
+	{
+		if (!InstanceName) 
+			throw UserErrorT() << "You must specify an instance name for a new synch instance.";
+
+		Root.CreateDirectory();
+		StorageRoot.CreateDirectory();
+	}
 
 	// Start DB
 	Database = std::make_unique<CoreDatabaseT>(Root.Enter("coredb.sqlite3"));
@@ -95,42 +104,9 @@ CoreT::CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const
 	// TODO
 
 	// Set up transactions, replay failed transactions
-	Transact = std::make_unique<CoreTransactionsT>(
-		[this](
-			GlobalChangeIDT const &ChangeID,
-			ChangeIDT const &ParentID,
-			OptionalT<ChangeIDT> const &HeadID,
-			OptionalT<StorageIDT> const &StorageID,
-			OptionalT<size_t> const &StorageRefCount,
-			bool const &DeleteMissing)
-		{
-			TransactAddChange(
-				ChangeID,
-				ParentID,
-				HeadID,
-				StorageID,
-				StorageRefCount,
-				DeleteMissing);
-		},
-
-		[this](
-			OptionalT<StorageIDT> const &StorageID,
-			OptionalT<size_t> const &StorageRefCount,
-			GlobalChangeIDT const &ChangeID,
-			OptionalT<ChangeIDT> const &DeleteParent,
-			OptionalT<HeadT> const &NewHead,
-			OptionalT<StorageIDT> const &NewStorageID,
-			StorageChangesT const &StorageChanges)
-		{
-			TransactUpdateDeleteHead(
-				StorageID,
-				StorageRefCount,
-				ChangeID,
-				DeleteParent,
-				NewHead,
-				NewStorageID,
-				StorageChanges);
-		});
+	Transact = std::make_unique<CoreTransactorT>(
+		Root.Enter("coretransactions"),
+		*this);
 }
 
 /*void CoreT::AddInstance(std::string const &Name)
@@ -190,7 +166,8 @@ void CoreT::AddChange(GlobalChangeIDT const &ChangeID, ChangeIDT const &ParentID
 		DeleteMissing);
 }
 
-void CoreT::TransactAddChange(
+void CoreT::Handle(
+	CTV1AddChange,
 	GlobalChangeIDT const &ChangeID,
 	ChangeIDT const &ParentID,
 	OptionalT<ChangeIDT> const &HeadID,
@@ -198,13 +175,13 @@ void CoreT::TransactAddChange(
 	OptionalT<size_t> const &StorageRefCount,
 	bool const &DeleteMissing)
 {
-	Database->InsertChange({{ChangeID.NodeID(), ChangeID.ChangeID()}, ParentID});
+	Database->InsertChange(ChangeT(GlobalChangeIDT(ChangeID.NodeID(), ChangeID.ChangeID()), ParentID));
 	ChangeAddListeners.Notify(ChangeID, ParentID);
 
 	if (DeleteMissing)
 	{
 		MissingRemoveListeners.Notify(ChangeID);
-		Database->DeleteMissing(ChangeID.NodeID(), ChangeID.ChangeID());
+		Database->DeleteMissing(GlobalChangeIDT(ChangeID.NodeID(), ChangeID.ChangeID()));
 	}
 
 	if (StorageRefCount)
@@ -212,7 +189,7 @@ void CoreT::TransactAddChange(
 		Database->SetStorageRefCount(*StorageID, StorageRefCount);
 	}
 
-	Database->InsertMissing(ChangeID.NodeID(), ChangeID.ChangeID(), HeadID, StorageID);
+	Database->InsertMissing(MissingT(GlobalChangeIDT(ChangeID.NodeID(), ChangeID.ChangeID()), HeadID, StorageID));
 	MissingAddListeners.Notify(ChangeID);
 }
 
@@ -221,63 +198,67 @@ void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, 
 	OptionalT<ChangeIDT> DeleteParent;
 	auto Now = time(nullptr);
 	HeadT NewHead;
+	NewHead.ChangeID() = ChangeID;
 	NewHead.CreateTimestamp() = Now;
 
+	OptionalT<StorageIDT> StorageID;
 	OptionalT<size_t> StorageRefCount;
 
-	auto Missing = Database->GetMissing(ChangeID.NodeID(), ChangeID.ChangeID());
+	auto Missing = Database->GetMissing(ChangeID);
 	if (!Missing)
 	{
-		ERROR;
+		Log(LogT::Warning, StringT() << "Attempting to define change with no Missing: " << ChangeID);
 		return;
 	}
-	if (Missing->StorageID)
+	StorageID = Missing->StorageID();
+	if (StorageID)
 	{
-		auto Storage = Database->GetStorage(StorageID);
-		StorageRefCount = Storage.RefCount - 1;
+		auto Storage = *Database->GetStorage(*StorageID);
+		StorageRefCount = Storage.ReferenceCount() - 1;
 	}
-	if (auto Head = Database->GetHead(ChangeID.NodeID(), Missing->ParentID()))
-	{
-		DeleteParent = Missing->ParentID;
-		NewHead = *Head;
-		if (StorageRefCount) *StorageRefCount -= 1;
-	}
+	if (Missing->HeadID())
+		if (auto Head = Database->GetHead(GlobalChangeIDT(ChangeID.NodeID(), *Missing->HeadID())))
+		{
+			DeleteParent = Missing->HeadID();
+			NewHead = *Head;
+			if (StorageRefCount) *StorageRefCount -= 1;
+		}
 	NewHead.ModifyTimestamp() = time(nullptr);
+
 	assert(Definition);
 	if (Definition.Is<DefineHeadT>())
 	{
-		auto const &DefineHead = Definition.As<DefineHeadT>();
-		OptionalT<StorageIDT> NewStorageID;
-		if (StorageRefCount)
+		auto const &DefineHead = Definition.Get<DefineHeadT>();
+		if (StorageID)
 		{
-			if (DefineHead.StorageChanges.empty())
+			if (!DefineHead.StorageChanges)
 			{
-				NewStorageID = Missing->StorageID();
+				NewHead.StorageID() = StorageID;
 				*StorageRefCount += 1;
 			}
 			else
 			{
 				if (*StorageRefCount == 0)
 				{
-					NewStorageID = Missing->StorageID();
+					NewHead.StorageID() = Missing->StorageID();
 					*StorageRefCount += 1;
 				}
 				else
 				{
-					NewStorageID = Database->GetStorageCounter();
+					NewHead.StorageID() = Database->GetStorageCounter();
 					Database->IncrementStorageCounter();
 				}
 			}
 		}
 		else
 		{
-			if (DefineHead.StorageChanges())
+			if (DefineHead.StorageChanges)
 			{
-				NewStorageID = Database->GetStorageID();
-				Database->IncrementStorageID();
+				NewHead.StorageID() = Database->GetStorageCounter();
+				Database->IncrementStorageCounter();
 			}
 		}
-		NewHead.Meta() = DefineHead.ChangeMeta();
+		NewHead.Meta() = DefineHead.MetaChanges;
 		(*Transact)(
 			CTV1UpdateDeleteHead(),
 			StorageID,
@@ -285,7 +266,6 @@ void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, 
 			ChangeID,
 			DeleteParent,
 			NewHead,
-			NewStorageID,
 			DefineHead.StorageChanges);
 	}
 	else if (Definition.Is<DeleteHeadT>())
@@ -295,77 +275,66 @@ void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, 
 			StorageRefCount,
 			ChangeID,
 			DeleteParent,
-			{},
-			{},
-			{});
+			OptionalT<HeadT>(),
+			StorageChangesT());
 }
 
-void CoreT::TransactUpdateDeleteHead(
+void CoreT::Handle(
+	CTV1UpdateDeleteHead,
 	OptionalT<StorageIDT> const &StorageID,
 	OptionalT<size_t> const &StorageRefCount,
 	GlobalChangeIDT const &ChangeID,
 	OptionalT<ChangeIDT> const &DeleteParent,
 	OptionalT<HeadT> const &NewHead,
-	OptionalT<StorageIDT> const &NewStorageID,
 	StorageChangesT const &StorageChanges)
 {
 	MissingRemoveListeners.Notify(ChangeID);
-	Database->DeleteMissing(ChangeID.NodeID(), ChangeID.ChangeID);
+	Database->DeleteMissing(GlobalChangeIDT(ChangeID.NodeID(), ChangeID.ChangeID()));
 	if (DeleteParent)
 	{
-		HeadRemoveListeners.Notify({ChangeID.NodeID(), *DeleteParent});
-		Database->DeleteHead(ChangeID.NodeID(), *DeleteParent);
+		HeadRemoveListeners.Notify(GlobalChangeIDT(ChangeID.NodeID(), *DeleteParent));
+		Database->DeleteHead(GlobalChangeIDT(ChangeID.NodeID(), *DeleteParent));
 	}
 	if (NewHead)
 	{
 		if (StorageChanges)
 		{
-			NewStoragePath = GetStoragePath(*NewStorageID);
-			if (StorageChanges.As<DefineHeadT::TruncateT>())
+			auto NewStoragePath = GetStoragePath(*NewHead->StorageID());
+			if (StorageChanges.Is<TruncateT>())
 			{
-				auto File = Filesystem::fopen_write(NewStoragePath.Render());
-				fclose(File);
+				Filesystem::FileT::OpenWrite(NewStoragePath.Render());
 			}
-			else if (StorageChanges)
+			else
 			{
-				FILE *NewStorage = nullptr;
-				if (StorageID && (StorageID != NewStorageID) && !StorageChanges->empty())
+				auto &Changes = StorageChanges.Get<std::vector<BytesChangeT>>();
+
+				Filesystem::FileT NewStorage;
+
+				if (StorageID && (StorageID != NewHead->StorageID()))
 				{
-					OldStoragePath = GetStoragePath(*StorageID);
-					auto OldStorage = Filesystem::fopen_read(OldStoragePath.Render());
-					NewStorage = Filesystem::fopen_write(NewStoragePath.Render());
-					constexpr size_t BUFFER_SIZE = 8192;
-					char Buffer[BUFFER_SIZE];
-					size_t ReadSize;
-					while (ReadSize = fread(Buffer, 1, BUFFER_SIZE, OldStorage))
-						fwrite(Buffer, 1, ReadSize, NewStorage); // TODO handle errors
-					fclose(OldStorage);
+					// If modifying old storage
+					auto OldStoragePath = GetStoragePath(*StorageID);
+					auto OldStorage = Filesystem::FileT::OpenRead(OldStoragePath);
+					NewStorage = Filesystem::FileT::OpenWrite(NewStoragePath);
+					std::vector<uint8_t> Buffer;
+					while (OldStorage.Read(Buffer)) NewStorage.Write(Buffer);
 				}
 				else
 				{
-					if (!StorageID) NewStorage = Filesystem::fopen_write(NewStoragePath.Render());
-					else NewStorage = Filesystem::fopen_modify(NewStoragePath.Render());
+					// If no old storage, but making modifications
+					if (!StorageID) NewStorage = Filesystem::FileT::OpenWrite(NewStoragePath);
+					else NewStorage = Filesystem::FileT::OpenModify(NewStoragePath);
 				}
-				for (auto const &Change : *StorageChanges)
+
+				for (auto const &Change : Changes)
 				{
-					fseek(NewStorage, Change.first, SEEK_SET); // TODO handle errors
-					fwrite(&Change.second[0], 1, Change.second.size(), NewStorage); // TODO handle errors
+					NewStorage.Seek(Change.Offset());
+					NewStorage.Write(Change.Bytes());
 				}
-				fclose(NewStorage);
 			}
 		}
-		Database->InsertHead(
-			ChangeID.NodeID,
-			ChangeID.ChangeID,
-			NewStorageID,
-			NewHead->Meta.Filename(),
-			NewHead->Meta.ParentID(),
-			NewHead->Meta.Writable(),
-			NewHead->Meta.Executable(),
-			NewHead->CreateTimestamp(),
-			NewHead->ModifyTimestamp());
-		if (NewStorageID)
-			Database->InsertStorage(*NewStorageID);
+		Database->InsertHead(*NewHead);
+		if (NewHead->StorageID()) Database->InsertStorage(*NewHead->StorageID());
 		HeadAddListeners.Notify(ChangeID);
 	}
 	if (StorageRefCount)
@@ -385,3 +354,8 @@ void CoreT::TransactUpdateDeleteHead(
 /*std::array<GlobalChangeIDT, PageSize> CoreT::GetMissings(size_t Page);
 HeadT CoreT::GetHead(GlobalChangeIDT const &HeadID);
 std::array<HeadT, PageSize> CoreT::GetHeads(NodeIDT ParentID, OptionalT<InstanceIDT> Split);*/
+		
+Filesystem::PathT CoreT::GetStoragePath(StorageIDT const &StorageID)
+{
+	return StorageRoot.Enter(StringT() << StorageID);
+}

@@ -23,12 +23,7 @@ DefineProtocolMessage(CTV1UpdateDeleteHead, CoreTransactorVersion1,
 		GlobalChangeIDT ChangeID,
 		OptionalT<ChangeIDT> DeleteParent,
 		OptionalT<HeadT> NewHead,
-		OptionalT<StorageIDT> NewStorageID,
 		StorageChangesT StorageChanges))
-
-typedef TransactorT<
-	CTV1AddChange,
-	CTV1UpdateDeleteHead> CoreTransactionsT;
 
 #endif
 
