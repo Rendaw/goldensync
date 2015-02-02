@@ -45,7 +45,7 @@ template <typename CallbackT> HashT FeedHash(CallbackT const &Feed)
 	HashT Hash{};
 	cvs_MD5Final(&Hash[0], &Context);
 	return Hash;
-};
+}
 
 HashT HashString(std::string const &String)
 {

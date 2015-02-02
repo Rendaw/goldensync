@@ -9,8 +9,7 @@ DefineProtocolVersion(CoreTransactorVersion1, CoreTransactorProtocol)
 
 DefineProtocolMessage(CTV1AddChange, CoreTransactorVersion1,
 	void(
-		GlobalChangeIDT ChangeID,
-		ChangeIDT ParentID,
+		ChangeT Change,
 		OptionalT<ChangeIDT> HeadID,
 		OptionalT<StorageIDT> StorageID,
 		OptionalT<size_t> StorageRefCount,

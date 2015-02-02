@@ -56,14 +56,19 @@ struct SQLDatabaseT
 		{
 			Assert(Context);
 			if (sizeof...(Arguments) > 0)
-				Bind(BaseContext, Context, 1, Arguments...);
+			{
+				int BindIndex = 1;
+				std::cout << "Starting bind" << std::endl;
+				Bind(BaseContext, Context, BindIndex, Arguments...);
+			}
 			while (true)
 			{
 				int Result = sqlite3_step(Context);
 				if (Result == SQLITE_DONE) break;
 				if (Result != SQLITE_ROW)
 					throw SystemErrorT() << "Could not execute query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
-				Unbind<ResultT...>(Context, 0, Function);
+				int UnbindIndex = 0;
+				Unbind<ResultT...>(Context, UnbindIndex, Function);
 			}
 			sqlite3_reset(Context);
 		}
@@ -118,10 +123,11 @@ struct SQLDatabaseT
 				void Bind(
 					sqlite3 *BaseContext, 
 					sqlite3_stmt *Context, 
-					int Index, 
+					int &Index, 
 					NextT const &Value, 
 					RemainingT const &...Remaining)
 			{
+				std::cout << "  binding at " << Index << std::endl;
 				DBImplm<NextT>::Bind(
 					BaseContext, 
 					Context, 
@@ -135,13 +141,13 @@ struct SQLDatabaseT
 					std::forward<RemainingT const &>(Remaining)...);
 			}
 
-			void Bind(sqlite3 *BaseContext, sqlite3_stmt *Context, int Index)
+			void Bind(sqlite3 *BaseContext, sqlite3_stmt *Context, int &Index)
 				{ AssertE(Index - 1, sqlite3_bind_parameter_count(Context)); }
 
 			template <typename NextT, typename ...RemainingT, typename ...ReadT>
 				void Unbind(
 					sqlite3_stmt *Context, 
-					int Index, 
+					int &Index, 
 					function<void(ResultT && ...)> const &Function, 
 					ReadT && ...ReadData)
 			{
@@ -149,7 +155,7 @@ struct SQLDatabaseT
 					Context, 
 					Index, 
 					Function, 
-					std::forward<ReadT>(ReadData)..., 
+					std::forward<ReadT &&>(ReadData)..., 
 					DBImplm<NextT>::Unbind(
 						Context, 
 						Index));
@@ -158,12 +164,12 @@ struct SQLDatabaseT
 			template <typename ...ReadT>
 				void Unbind(
 					sqlite3_stmt *Context, 
-					int Index, 
+					int &Index, 
 					function<void(ResultT && ...)> const &Function, 
 					ReadT && ...ReadData)
 			{
 				AssertE(Index, sqlite3_column_count(Context));
-				Function(std::forward<ReadT>(ReadData)...);
+				Function(std::forward<ResultT &&>(ReadData)...);
 			}
 
 			const char *Template;

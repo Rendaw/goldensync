@@ -50,6 +50,8 @@ return
 				{ 'DirID', 'OptionalT<NodeIDT>', },
 				{ 'Writable', 'bool', },
 				{ 'Executable', 'bool', },
+				{ 'CreateTimestamp', 'TimeT', },
+				{ 'ModifyTimestamp', 'TimeT', },
 			},
 		},
 
@@ -60,8 +62,6 @@ return
 				{ 'ChangeID', 'GlobalChangeIDT', },
 				{ 'StorageID', 'OptionalT<StorageIDT>', },
 				{ 'Meta', 'NodeMetaT', },
-				{ 'CreateTimestamp', 'TimeT', },
-				{ 'ModifyTimestamp', 'TimeT', },
 			},
 		},
 

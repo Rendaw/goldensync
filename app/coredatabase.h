@@ -117,21 +117,27 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 		
 	StatementT<std::string (void)> GetEnvHash;
 	StatementT<void (InstanceIndexT InstanceIndex, std::string EnvHash)> SetPrimaryInstance;
+	StatementT<InstanceIndexT (void)> GetPrimaryInstance;
 	StatementT<std::string (void)> GetPrimaryInstanceName;
 	
 	StatementT<void (std::string Name, InstanceUniqueT Unique)> InsertInstance;
 	StatementT<InstanceIndexT (void)> GetLastInstance;
 
+	StatementT<ChangeT (size_t Start, size_t Count)> ListChanges;
 	StatementT<void (ChangeT const &Change)> InsertChange;
 
+	StatementT<MissingT (size_t Start, size_t Count)> ListMissing;
 	StatementT<MissingT (GlobalChangeIDT const &ID)> GetMissing;
 	StatementT<void (MissingT const &Missing)> InsertMissing;
 	StatementT<void (GlobalChangeIDT const &ID)> DeleteMissing;
 
+	StatementT<HeadT (size_t Start, size_t Count)> ListHeads;
+	StatementT<HeadT (OptionalT<NodeIDT> const &Dir, size_t Start, size_t Count)> ListDirHeads;
 	StatementT<HeadT (GlobalChangeIDT const &ID)> GetHead;
 	StatementT<void (HeadT const &Head)> InsertHead;
 	StatementT<void (GlobalChangeIDT const &ID)> DeleteHead;
 
+	StatementT<StorageT (size_t Start, size_t Count)> ListStorage;
 	StatementT<StorageT (StorageIndexT const &ID)> GetStorage;
 	StatementT<void (StorageIDT const &StorageID)> InsertStorage;
 	StatementT<void (StorageIndexT const &ID)> DeleteStorage;
@@ -156,33 +162,45 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 			"SELECT \"InstanceEnvHash\" FROM \"Stats\" LIMIT 1"),
 		SetPrimaryInstance(this,
 			"UPDATE \"Stats\" SET \"InstanceEnvHash\" = ?, \"InstanceIndex\" = ?"),
+		GetPrimaryInstance(this,
+			"SELECT \"InstanceIndex\" FROM \"Stats\" LIMIT 1"),
 		GetPrimaryInstanceName(this,
-			"SELECT \"Name\" FROM \"Instances\" WHERE \"Instance\" = (SELECT \"InstanceIndex\" FROM \"Stats\")"),
+			"SELECT \"Name\" FROM \"Instances\" WHERE \"Instance\" = (SELECT \"InstanceIndex\" FROM \"Stats\" LIMIT 1) LIMIT 1"),
 			
 		InsertInstance(this,
 			"INSERT INTO \"Instances\" (\"Instance\", \"Name\", \"Unique\") VALUES (NULL, ?, ?)"),
 		GetLastInstance(this,
 			"SELECT \"Instance\" FROM \"Instances\" ORDER BY \"Instance\" DESC LIMIT 1"),
 
+		ListChanges(this,
+			"SELECT * FROM \"Changes\" LIMIT ?,?"),
 		InsertChange(this,
 			"INSERT INTO \"Changes\" VALUES (?, ?, ?, ?, ?, ?)"),
 
+		ListMissing(this,
+			"SELECT * FROM \"Missing\" LIMIT ?,?"),
 		GetMissing(this,
-			"SELECT * FROM \"Missing\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ?"),
+			"SELECT * FROM \"Missing\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ? LIMIT 1"),
 		InsertMissing(this,
 			"INSERT INTO \"Missing\" VALUES (?, ?, ?, ?, ?, ?, ?)"),
 		DeleteMissing(this,
 			"DELETE FROM \"Missing\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ?"),
 
+		ListHeads(this,
+			"SELECT * FROM \"Heads\" LIMIT ?,?"),
+		ListDirHeads(this,
+			"SELECT * FROM \"Heads\" WHERE \"DirInstance\" = ? AND \"DirIndex\" = ? LIMIT ?,?"),
 		GetHead(this,
-			"SELECT * FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ?"),
+			"SELECT * FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ? LIMIT 1"),
 		InsertHead(this,
 			"INSERT INTO \"Heads\" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
 		DeleteHead(this,
 			"DELETE FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ?"),
 
+		ListStorage(this,
+			"SELECT * FROM \"Storage\" LIMIT ?,?"),
 		GetStorage(this,
-			"SELECT * FROM \"Storage\" WHERE \"StorageIndex\" = ?"),
+			"SELECT * FROM \"Storage\" WHERE \"StorageIndex\" = ? LIMIT 1"),
 		InsertStorage(this,
 			"INSERT INTO \"Storage\" (\"StorageIndex\") VALUES (?)"),
 		DeleteStorage(this,

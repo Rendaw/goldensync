@@ -81,28 +81,27 @@ template <typename ...ArgumentsT> struct NotifyT<void(ArgumentsT...)>
 
 struct CoreT
 {
-	NotifyT<void(GlobalChangeIDT const &ChangeID, ChangeIDT const &ParentID)> ChangeAddListeners;
+	NotifyT<void(ChangeT const &Change)> ChangeAddListeners;
 	NotifyT<void(GlobalChangeIDT const &)> MissingAddListeners;
 	NotifyT<void(GlobalChangeIDT const &)> MissingRemoveListeners;
 	NotifyT<void(GlobalChangeIDT const &)> HeadAddListeners;
 	NotifyT<void(GlobalChangeIDT const &)> HeadRemoveListeners;
 
 	CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const &Root);
+
 	/*void AddInstance(std::string const &Name);
 	InstanceIDT AddInstance(std::string const &Name);*/
 	NodeIndexT ReserveNode(void);
 	ChangeIndexT ReserveChange(void);
-	void AddChange(GlobalChangeIDT const &ChangeID, ChangeIDT const &ParentID);
+	void AddChange(ChangeT const &Change);
 	void DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, DeleteHeadT> const &Definition);
 	/*std::array<GlobalChangeIDT, PageSize> GetMissings(size_t Page);
-	HeadT GetHead(GlobalChangeIDT const &HeadID);
 	std::array<HeadT, PageSize> GetHeads(NodeIDT ParentID, OptionalT<InstanceIDT> Split);*/
 
 	// Should be private, but I don't want to commit to a type name
 	void Handle(
 		CTV1AddChange,
-		GlobalChangeIDT const &ChangeID,
-		ChangeIDT const &ParentID, 
+		ChangeT const &Change,
 		OptionalT<ChangeIDT> const &HeadID,
 		OptionalT<StorageIDT> const &StorageID, 
 		OptionalT<size_t> const &StorageRefCount,
@@ -116,6 +115,17 @@ struct CoreT
 		OptionalT<HeadT> const &NewHead,
 		StorageChangesT const &DataChanges);
 
+	InstanceIndexT GetThisInstance(void) const;
+	std::vector<ChangeT> ListChanges(size_t Start, size_t Count);
+	std::vector<MissingT> ListMissing(size_t Start, size_t Count);
+	std::vector<HeadT> ListHeads(size_t Start, size_t Count);
+	std::vector<HeadT> ListDirHeads(OptionalT<NodeIDT> const &Dir, size_t Start, size_t Count);
+	std::vector<StorageT> ListStorage(size_t Start, size_t Count);
+	
+	OptionalT<HeadT> GetHead(GlobalChangeIDT const &HeadID);
+
+	Filesystem::FileT Open(StorageIDT const &Storage);
+
 	private:
 		Filesystem::PathT const Root;
 		Filesystem::PathT const StorageRoot;
@@ -126,6 +136,8 @@ struct CoreT
 				CTV1AddChange,
 				CTV1UpdateDeleteHead> CoreTransactorT;
 		std::unique_ptr<CoreTransactorT> Transact;
+
+		InstanceIndexT ThisInstance;
 
 		Filesystem::PathT GetStoragePath(StorageIDT const &StorageID);
 };

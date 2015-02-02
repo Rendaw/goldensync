@@ -1,6 +1,6 @@
 DoOnce 'ren-cxx-filesystem/Tupfile.lua'
 
-local GeneratedHeaders = Item()
+GeneratedHeaders = Item()
 GeneratedHeaders = GeneratedHeaders + Define.Lua
 {
 	Script = 'protocol/generate_wrappedtuples.lua',
@@ -9,20 +9,27 @@ GeneratedHeaders = GeneratedHeaders + Define.Lua
 	Outputs = Item() + 'structtypes.h',
 }
 
-Define.Executable
+CoreObjects = Define.Objects
 {
-	Name = 'goldensync',
-	BuildExtras = GeneratedHeaders,
-	LinkFlags = '-lsqlite3',
 	Sources = Item()
-		+ 'main.cxx'
 		+ 'core.cxx'
 		+ 'log.cxx'
 		+ 'md5/hash.cxx'
 		+ 'md5/md5.c'
 		,
+	BuildExtras = GeneratedHeaders,
+} + FilesystemObjects
+
+Define.Executable
+{
+	Name = 'goldensync',
+	LinkFlags = '-lsqlite3',
+	Sources = Item()
+		+ 'main.cxx'
+		,
+	BuildExtras = GeneratedHeaders,
 	Objects = Item()
-		+ FilesystemObjects
+		+ CoreObjects
 		,
 }
 
