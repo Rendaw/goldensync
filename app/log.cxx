@@ -19,7 +19,7 @@ void BasicLogT::operator()(LevelT Level, std::string const &Message) const
 	if (auto Wrote = strftime(&Buffer[0], Buffer.size(), "%F %T", LocalTime))
 		FormattedMessage.write(&Buffer[0], Wrote);
 	FormattedMessage << " (" << Name << "):" << Message;
-	if (Level >= Error) std::cerr << FormattedMessage << std::endl;
-	else std::cout << FormattedMessage << "\n";
+	if (Level >= Error) std::cerr << FormattedMessage.str() << std::endl;
+	else std::cout << FormattedMessage.str() << std::endl;
 }
 

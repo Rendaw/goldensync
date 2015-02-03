@@ -34,6 +34,7 @@ template <typename ProtoHandlerT, typename ...MessagesT> struct TransactorT
 		TransactionPath(TransactionPath),
 		Handler(Handler)
 	{
+		TransactionPath.CreateDirectory();
 		TransactionPath.List([&](Filesystem::PathT &&Path, bool IsFile, bool IsDir)
 		{
 			auto In = Filesystem::FileT::OpenRead(Path);

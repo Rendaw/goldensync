@@ -51,9 +51,9 @@ struct CoreDatabaseBaseT : SQLDatabaseT
 
 			Execute("CREATE TABLE \"Instances\" "
 			"("
-				"\"Instance\" INTEGER PRIMARY KEY AUTOINCREMENT, "
-				"\"Name\" VARCHAR, "
-				"\"Unique\" INTEGER "
+				"\"Instance\" INTEGER PRIMARY KEY AUTOINCREMENT , "
+				"\"Name\" VARCHAR NOT NULL , "
+				"\"Unique\" INTEGER NOT NULL "
 			")");
 
 			Execute("CREATE TABLE \"Heads\" "
@@ -66,12 +66,11 @@ struct CoreDatabaseBaseT : SQLDatabaseT
 				"\"Filename\" VARCHAR NOT NULL , "
 				"\"DirInstance\" INTEGER , "
 				"\"DirIndex\" INTEGER , "
-				"\"IsFile\" BOOLEAN NOT NULL , "
 				"\"Writable\" BOOLEAN NOT NULL , "
 				"\"Executable\" BOOLEAN NOT NULL , "
 				"\"CreateTimestamp\" DATETIME NOT NULL , "
 				"\"ModifyTimestamp\" DATETIME NOT NULL , "
-				"PRIMARY KEY (\"NodeInstance\", \"NodeIndex\")"
+				"PRIMARY KEY (\"NodeInstance\", \"NodeIndex\", \"ChangeInstance\", \"ChangeIndex\")"
 			")");
 			// TODO make root?
 			
@@ -116,7 +115,7 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 	StatementT<void (void)> IncrementStorageCounter;
 		
 	StatementT<std::string (void)> GetEnvHash;
-	StatementT<void (InstanceIndexT InstanceIndex, std::string EnvHash)> SetPrimaryInstance;
+	StatementT<void (std::string EnvHash, InstanceIndexT InstanceIndex)> SetPrimaryInstance;
 	StatementT<InstanceIndexT (void)> GetPrimaryInstance;
 	StatementT<std::string (void)> GetPrimaryInstanceName;
 	
@@ -189,11 +188,11 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 		ListHeads(this,
 			"SELECT * FROM \"Heads\" LIMIT ?,?"),
 		ListDirHeads(this,
-			"SELECT * FROM \"Heads\" WHERE \"DirInstance\" = ? AND \"DirIndex\" = ? LIMIT ?,?"),
+			"SELECT * FROM \"Heads\" WHERE \"DirInstance\" IS ? AND \"DirIndex\" IS ? LIMIT ?,?"),
 		GetHead(this,
 			"SELECT * FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ? LIMIT 1"),
 		InsertHead(this,
-			"INSERT INTO \"Heads\" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+			"INSERT INTO \"Heads\" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
 		DeleteHead(this,
 			"DELETE FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ?"),
 
@@ -202,7 +201,7 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 		GetStorage(this,
 			"SELECT * FROM \"Storage\" WHERE \"StorageIndex\" = ? LIMIT 1"),
 		InsertStorage(this,
-			"INSERT INTO \"Storage\" (\"StorageIndex\") VALUES (?)"),
+			"INSERT INTO \"Storage\" (\"StorageIndex\", \"ReferenceCount\") VALUES (?, 1)"),
 		DeleteStorage(this,
 			"DELETE FROM \"Storage\" WHERE \"StorageIndex\" = ?"),
 		SetStorageRefCount(this,

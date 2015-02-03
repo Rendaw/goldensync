@@ -58,7 +58,7 @@ struct SQLDatabaseT
 			if (sizeof...(Arguments) > 0)
 			{
 				int BindIndex = 1;
-				std::cout << "Starting bind" << std::endl;
+				std::cout << "+Starting bind" << std::endl;
 				Bind(BaseContext, Context, BindIndex, Arguments...);
 			}
 			while (true)
@@ -68,6 +68,7 @@ struct SQLDatabaseT
 				if (Result != SQLITE_ROW)
 					throw SystemErrorT() << "Could not execute query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 				int UnbindIndex = 0;
+				std::cout << "-Starting unbind" << std::endl;
 				Unbind<ResultT...>(Context, UnbindIndex, Function);
 			}
 			sqlite3_reset(Context);
@@ -151,6 +152,7 @@ struct SQLDatabaseT
 					function<void(ResultT && ...)> const &Function, 
 					ReadT && ...ReadData)
 			{
+				std::cout << "  unbinding at " << Index << std::endl;
 				Unbind<RemainingT...>(
 					Context, 
 					Index, 

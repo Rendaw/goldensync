@@ -96,11 +96,11 @@ CoreT::CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const
 		Database->InsertInstance(
 			DefinitelyInstanceName, 
 			std::mt19937(std::random_device()())());
-		auto Instance = *Database->GetLastInstance();
-		Database->SetPrimaryInstance(Instance, EnvHash);
+		ThisInstance = *Database->GetLastInstance();
+		Database->SetPrimaryInstance(EnvHash, ThisInstance);
+		Log(LogT::Debug, StringT() << "Environment hash changed (" << OldEnvHash << " -> " << EnvHash << "); primary instance is now " << ThisInstance << ".");
 	}
-	
-	ThisInstance = *Database->GetPrimaryInstance();
+	else ThisInstance = *Database->GetPrimaryInstance();
 
 	// Clean up stray holds
 	// TODO
@@ -139,23 +139,26 @@ void CoreT::AddChange(ChangeT const &Change)
 	OptionalT<StorageIDT> StorageID;
 	OptionalT<ChangeIDT> HeadID;
 	OptionalT<size_t> StorageRefCount;
-	if (auto Missing = Database->GetMissing(GlobalChangeIDT(Change.ChangeID().NodeID(), Change.ParentID())))
+	if (Change.ParentID())
 	{
-		StorageID = Missing->StorageID();
-		HeadID = Missing->HeadID();
-		DeleteMissing = true;
-	}
-	else
-	{
-		auto Head = Database->GetHead(GlobalChangeIDT(Change.ChangeID().NodeID(), Change.ParentID()));
-		if (Head)
+		if (auto Missing = Database->GetMissing(GlobalChangeIDT(Change.ChangeID().NodeID(), *Change.ParentID())))
 		{
-			HeadID = Change.ParentID();
-			StorageID = Head->StorageID();
-			if (StorageID)
+			StorageID = Missing->StorageID();
+			HeadID = Missing->HeadID();
+			DeleteMissing = true;
+		}
+		else
+		{
+			auto Head = Database->GetHead(GlobalChangeIDT(Change.ChangeID().NodeID(), *Change.ParentID()));
+			if (Head)
 			{
-				auto Storage = *Database->GetStorage(*StorageID);
-				StorageRefCount = Storage.ReferenceCount() + 1;
+				HeadID = Head->ChangeID().ChangeID();
+				StorageID = Head->StorageID();
+				if (StorageID)
+				{
+					auto Storage = *Database->GetStorage(*StorageID);
+					StorageRefCount = Storage.ReferenceCount() + 1;
+				}
 			}
 		}
 	}
@@ -416,7 +419,101 @@ Filesystem::FileT CoreT::Open(StorageIDT const &Storage)
 {
 	return Filesystem::FileT::OpenRead(GetStoragePath(Storage));
 }
-		
+	
+void CoreT::DumpGraphviz(std::string const &RawPath)
+{
+	auto Out = Filesystem::FileT::OpenWrite(Filesystem::PathT::Qualify(RawPath));
+	Out.Write(StringT() << "digraph\n{\n\n");
+	constexpr size_t ListSize = 10;
+
+	OptionalT<NodeIDT> LastNode;
+	while (true)
+	{
+		auto Changes = ListChanges(0, ListSize);
+		for (auto const &Change : Changes)
+		{
+			if (!LastNode || (*LastNode != Change.ChangeID().NodeID()))
+			{
+				if (LastNode)
+					Out.Write(StringT() << "}\n");
+				Out.Write(StringT() << 
+					"subgraph \"cluster" << Change.ChangeID().NodeID() << "\" {\n" <<
+					"\tlabel = \"" << Change.ChangeID().NodeID() << "\";\n");
+				LastNode = Change.ChangeID().NodeID();
+			}
+			Out.Write(StringT() << 
+				"\t { "
+					"\"" << Change.ChangeID() << "\" " <<
+					"[label = \"" << Change.ChangeID().ChangeID() << "\"] "
+				"} ");
+			if (Change.ParentID())
+				Out.Write(StringT() << 
+					" -> \"" << 
+					GlobalChangeIDT(Change.ChangeID().NodeID(), *Change.ParentID()) <<
+					"\"");
+			else Out.Write("");
+			Out.Write(StringT() << ";\n");
+		}
+		if (Changes.size() < ListSize) break;
+	} 
+	if (LastNode)
+		Out.Write(StringT() << "}\n");
+
+	while (true)
+	{
+		auto Missings = ListMissing(0, ListSize);
+		for (auto const &Missing : Missings)
+		{
+			Out.Write(StringT() << 
+				"{ " <<
+					"\"m" << Missing.ChangeID() << "\" " <<
+					"[label = \"\", shape = box, color = blue] " <<
+				"} " <<
+				"-> \"" << Missing.ChangeID() << "\";\n");
+			if (Missing.HeadID())
+				Out.Write(StringT() << 
+					"\"m" << Missing.ChangeID() << "\" " <<
+					"-> \"h" << *Missing.HeadID() << "\";\n");
+		}
+		if (Missings.size() < ListSize) break;
+	}
+
+	while (true)
+	{
+		auto Heads = ListHeads(0, ListSize);
+		for (auto const &Head : Heads)
+		{
+			Out.Write(StringT() << 
+				"{ " <<
+					"\"h" << Head.ChangeID() << "\" " <<
+					"[label = \"\", shape = box, color = green] " <<
+				"} " <<
+				"-> \"" << Head.ChangeID() << "\";\n");
+			if (Head.StorageID())
+				Out.Write(StringT() << 
+					"\"h" << Head.ChangeID() << "\" " <<
+					"-> \"s" << *Head.StorageID() << "\";\n");
+		}
+		if (Heads.size() < ListSize) break;
+	}
+
+	while (true)
+	{
+		auto Storage = ListStorage(0, ListSize);
+		for (auto const &AStorage : Storage)
+		{
+			Out.Write(StringT() << 
+				"{ "
+					"\"s" << AStorage.StorageID() << "\" " <<
+					"[label = \"" << AStorage.StorageID() << "\", shape = box, color = brown] "
+				"};\n");
+		}
+		if (Storage.size() < ListSize) break;
+	}
+
+	Out.Write(StringT() << "\n}\n");
+}
+
 Filesystem::PathT CoreT::GetStoragePath(StorageIDT const &StorageID)
 {
 	return StorageRoot.Enter(StringT() << StorageID);

@@ -126,6 +126,8 @@ struct CoreT
 
 	Filesystem::FileT Open(StorageIDT const &Storage);
 
+	void DumpGraphviz(std::string const &RawPath);
+
 	private:
 		Filesystem::PathT const Root;
 		Filesystem::PathT const StorageRoot;

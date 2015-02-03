@@ -17,6 +17,7 @@ template <> struct DBImplm<std::string>
 		int &Index, 
 		std::string const &Value)
 	{
+		std::cout << "           Bind string at " << Index << std::endl;
 		if (sqlite3_bind_text(Context, Index, Value.c_str(), static_cast<int>(Value.size()), nullptr) != SQLITE_OK)
 			throw SystemErrorT() << "Could not bind argument " << Index << " to \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 		++Index;
@@ -26,6 +27,7 @@ template <> struct DBImplm<std::string>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
+		std::cout << "           Bind null string at " << Index << std::endl;
 		sqlite3_bind_null(Context, Index++);
 	}
 
@@ -33,8 +35,12 @@ template <> struct DBImplm<std::string>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{ 
+		std::cout << "           Unbind string at " << Index << std::endl;
 		return (char const *)sqlite3_column_text(Context, Index++); 
 	}
+	
+	static void UnbindNull(int &Index)
+		{ ++Index; }
 };
 
 // ----------------
@@ -53,6 +59,7 @@ template <typename IntegerT>
 		int &Index, 
 		IntegerT const &Value)
 	{
+		std::cout << "           Bind int at " << Index << std::endl;
 		static_assert(sizeof(Value) <= sizeof(int64_t), "Value is too big for sqlite");
 		int Result = 0;
 		if (sizeof(Value) < sizeof(int))
@@ -72,6 +79,7 @@ template <typename IntegerT>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
+		std::cout << "           Bind null int at " << Index << std::endl;
 		sqlite3_bind_null(Context, Index++);
 	}
 
@@ -79,6 +87,7 @@ template <typename IntegerT>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
+		std::cout << "           Unbind int at " << Index << std::endl;
 		static_assert(sizeof(IntegerT) <= sizeof(int64_t), "Integer type is too big for sqlite");
 		if (sizeof(IntegerT) < sizeof(int))
 			return static_cast<IntegerT>(sqlite3_column_int(Context, Index++));
@@ -95,6 +104,9 @@ template <typename IntegerT>
 			return *reinterpret_cast<IntegerT const *>(&Got);
 		}
 	}
+	
+	static void UnbindNull(int &Index)
+		{ ++Index; }
 };
 
 // ----------------
@@ -129,56 +141,32 @@ template
 	{ 
 		return ExplicitCastableT<Uniqueness, InnerT>(DBImplm<InnerT>::Unbind(Context, Index));
 	}
+	
+	static void UnbindNull(int &Index)
+	{ 
+		DBImplm<InnerT>::UnbindNull(Index);
+	}
 };
 
 // ----------------
 // Tuple and derived
 
-template <typename ValueT, typename TupleT> struct DBImplm_Tuple {};
+template <typename ValueT, typename AllT, typename RemainingT> struct DBImplm_Tuple;
 
 template
 <
 	typename ValueT,
-	typename ...InnerT
+	typename ...AllT,
+	typename NextT,
+	typename ...RemainingT
 >
 	struct DBImplm_Tuple
 	<
 		ValueT,
-		std::tuple<InnerT...>
+		std::tuple<AllT...>,
+		std::tuple<NextT, RemainingT...>
 	>
 {
-	template <typename ...AllT>
-		static void Bind2(
-			sqlite3 *BaseContext,
-			sqlite3_stmt *Context,
-			const char *Template,
-			int &Index,
-			ValueT const &Value)
-	{
-	}
-	
-	template <typename NextT, typename ...RemainingT>
-		static void Bind2(
-			sqlite3 *BaseContext,
-			sqlite3_stmt *Context,
-			const char *Template,
-			int &Index,
-			ValueT const &Value)
-	{
-		DBImplm<NextT>::Bind(
-			BaseContext, 
-			Context, 
-			Template, 
-			Index, 
-			std::get<sizeof...(InnerT) - (sizeof...(RemainingT) + 1)>(Value)); 
-		Bind2<RemainingT...>(
-			BaseContext,
-			Context,
-			Template,
-			Index,
-			Value);
-	}
-
 	static void Bind(
 		sqlite3 *BaseContext,
 		sqlite3_stmt *Context,
@@ -186,28 +174,85 @@ template
 		int &Index,
 		ValueT const &Value)
 	{
-		Bind2<InnerT...>(
-			BaseContext,
-			Context,
-			Template,
-			Index,
-			Value);
+		DBImplm<NextT>::Bind(
+			BaseContext, 
+			Context, 
+			Template, 
+			Index, 
+			std::get<sizeof...(AllT) - (sizeof...(RemainingT) + 1)>(Value)); 
+		DBImplm_Tuple<
+			ValueT, 
+			std::tuple<AllT...>,
+			std::tuple<RemainingT...>>::Bind(
+				BaseContext,
+				Context,
+				Template,
+				Index,
+				Value);
 	}
-	
-	template <typename NextT, typename ...RemainingT>
-		static void BindNull2(
-			sqlite3_stmt *Context,
-			int &Index)
+
+	static void BindNull(
+		sqlite3_stmt *Context,
+		int &Index)
 	{
 		sqlite3_bind_null(Context, Index++);
-		BindNull2<RemainingT...>(
-			Context,
-			Index);
+		DBImplm_Tuple<
+			ValueT, 
+			std::tuple<AllT...>,
+			std::tuple<RemainingT...>>::BindNull(
+				Context,
+				Index);
 	}
 	
-	static void BindNull2(
-		sqlite3_stmt *Context, 
-		int &Index)
+	template 
+	<
+		typename ...SeenT
+	>
+		static ValueT Unbind(
+			sqlite3_stmt *Context, 
+			int &Index,
+			SeenT && ...Seen)
+	{ 
+		return DBImplm_Tuple<
+			ValueT, 
+			std::tuple<AllT...>,
+			std::tuple<RemainingT...>>::Unbind(
+				Context, 
+				Index, 
+				std::forward<SeenT>(Seen)...,
+				DBImplm<NextT>::Unbind(
+					Context,
+					Index));
+	}
+	
+	static void UnbindNull(int &Index)
+	{ 
+		DBImplm<NextT>::UnbindNull(Index);
+		DBImplm_Tuple<
+			ValueT,
+			std::tuple<AllT...>,
+			std::tuple<RemainingT...>>::UnbindNull(Index);
+	}
+};
+
+template
+<
+	typename ValueT,
+	typename ...AllT
+>
+	struct DBImplm_Tuple
+	<
+		ValueT,
+		std::tuple<AllT...>,
+		std::tuple<>
+	>
+{
+	static void Bind(
+		sqlite3 *BaseContext,
+		sqlite3_stmt *Context,
+		const char *Template,
+		int &Index,
+		ValueT const &Value)
 	{
 	}
 	
@@ -215,47 +260,19 @@ template
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
-		BindNull2<InnerT...>(
-			Context, 
-			Index);
 	}
-
-	template 
-	<
-		typename NextT, 
-		typename ...RemainingT, 
-		typename ...SeenT
-	>
-		static ValueT Unbind2(
-			sqlite3_stmt *Context, 
-			int &Index,
-			SeenT ...Seen)
-	{ 
-		return Unbind2<RemainingT...>(
-			Context, 
-			Index, 
-			std::forward<SeenT>(Seen)...,
-			DBImplm<NextT>::Unbind(
-				Context,
-				Index));
-	}
-
+	
 	template <typename ...SeenT>
-		static ValueT Unbind2(
+		static ValueT Unbind(
 			sqlite3_stmt *Context, 
 			int &Index, 
-			SeenT ...Seen)
+			SeenT && ...Seen)
 	{
 	       return ValueT(std::forward<SeenT>(Seen)...);
 	}
 	
-	static ValueT Unbind(
-		sqlite3_stmt *Context, 
-		int &Index)
-	{
-		return Unbind2<InnerT...>(
-			Context,
-			Index);
+	static void UnbindNull(int &Index)
+	{ 
 	}
 };
 
@@ -276,19 +293,25 @@ template
 		int &Index,
 		ValueT const &Value)
 	{
-		DBImplm_Tuple<ValueT, typename ValueT::TupleT>::Bind(
-			BaseContext,
-			Context, 
-			Template,
-			Index,
-			Value);
+		DBImplm_Tuple<
+			ValueT, 
+			typename ValueT::TupleT, 
+			typename ValueT::TupleT>::Bind(
+				BaseContext,
+				Context, 
+				Template,
+				Index,
+				Value);
 	}
 	
 	static void BindNull(
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
-		DBImplm_Tuple<ValueT, typename ValueT::TupleT>::BindNull(Context, Index);
+		DBImplm_Tuple<
+			ValueT, 
+			typename ValueT::TupleT, 
+			typename ValueT::TupleT>::BindNull(Context, Index);
 	}
 
 		
@@ -296,9 +319,20 @@ template
 		sqlite3_stmt *Context, 
 		int &Index)
 	{ 
-		return DBImplm_Tuple<ValueT, typename ValueT::TupleT>::Unbind(
-			Context, 
-			Index);
+		return DBImplm_Tuple<
+			ValueT, 
+			typename ValueT::TupleT, 
+			typename ValueT::TupleT>::template Unbind<>(
+				Context, 
+				Index);
+	}
+	
+	static void UnbindNull(int &Index)
+	{ 
+		return DBImplm_Tuple<
+			ValueT, 
+			typename ValueT::TupleT, 
+			typename ValueT::TupleT>::UnbindNull(Index);
 	}
 };
 
@@ -336,10 +370,18 @@ template
 	{ 
 		if (sqlite3_column_type(Context, Index) == SQLITE_NULL) 
 		{
-			++Index;
+			DBImplm<InnerT>::UnbindNull(Index);
 			return {};
 		}
 		else return { DBImplm<InnerT>::Unbind(Context, Index) };
+	}
+	
+	static void UnbindNull(int &Index)
+	{ 
+		return DBImplm_Tuple<
+			ValueT, 
+			typename ValueT::TupleT, 
+			typename ValueT::TupleT>::UnbindNull(Index);
 	}
 };
 

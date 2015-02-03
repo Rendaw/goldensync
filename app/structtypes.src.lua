@@ -38,7 +38,7 @@ return
 			elements = 
 			{
 				{ 'ChangeID', 'GlobalChangeIDT' },
-				{ 'ParentID', 'ChangeIDT' },
+				{ 'ParentID', 'OptionalT<ChangeIDT>' },
 			},
 		},
 		
@@ -79,7 +79,7 @@ return
 			name = 'StorageT',
 			elements =
 			{
-				{ 'StorgeID', 'StorageIDT', },
+				{ 'StorageID', 'StorageIDT', },
 				{ 'ReferenceCount', 'uint8_t', },
 			},
 		},
