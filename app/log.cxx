@@ -8,7 +8,7 @@ LogT::~LogT(void) {}
 
 BasicLogT::BasicLogT(std::string const &Name) : Name(Name) {}
 
-BasicLogT::operator bool(void) const { return true; }
+bool BasicLogT::operator()(LevelT Level) const { return true; }
 
 void BasicLogT::operator()(LevelT Level, std::string const &Message) const
 {

@@ -80,7 +80,7 @@ return
 			elements =
 			{
 				{ 'StorageID', 'StorageIDT', },
-				{ 'ReferenceCount', 'uint8_t', },
+				{ 'ReferenceCount', 'StorageReferenceCountT', },
 			},
 		},
 		

@@ -3,6 +3,8 @@
 
 #include <string>
 
+#define LOG(Log, Level, Message) do { if (Log(LogT::Level)) Log(LogT::Level, Message); } while (false);
+
 struct LogT
 {
 	enum LevelT
@@ -15,7 +17,7 @@ struct LogT
 	};
 
 	virtual ~LogT(void);
-	virtual operator bool(void) const = 0;
+	virtual bool operator()(LevelT Level) const = 0;
 	virtual void operator()(LevelT Level, std::string const &Message) const = 0;
 };
 
@@ -27,7 +29,7 @@ struct BasicLogT : LogT
 	// redirect to file w/ periodic rotation + trunctation?
 
 	BasicLogT(std::string const &Name);
-	operator bool(void) const;
+	bool operator()(LevelT Level) const;
 	void operator()(LevelT Level, std::string const &Message) const;
 
 	private:

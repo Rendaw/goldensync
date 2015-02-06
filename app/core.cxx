@@ -138,7 +138,7 @@ void CoreT::AddChange(ChangeT const &Change)
 	bool DeleteMissing = false;
 	OptionalT<StorageIDT> StorageID;
 	OptionalT<ChangeIDT> HeadID;
-	OptionalT<size_t> StorageRefCount;
+	OptionalT<StorageReferenceCountT> StorageRefCount;
 	if (Change.ParentID())
 	{
 		if (auto Missing = Database->GetMissing(GlobalChangeIDT(Change.ChangeID().NodeID(), *Change.ParentID())))
@@ -157,7 +157,7 @@ void CoreT::AddChange(ChangeT const &Change)
 				if (StorageID)
 				{
 					auto Storage = *Database->GetStorage(*StorageID);
-					StorageRefCount = Storage.ReferenceCount() + 1;
+					StorageRefCount = Storage.ReferenceCount() + StorageReferenceCountT(1);
 				}
 			}
 		}
@@ -175,9 +175,10 @@ void CoreT::Handle(
 	ChangeT const &Change,
 	OptionalT<ChangeIDT> const &HeadID,
 	OptionalT<StorageIDT> const &StorageID,
-	OptionalT<size_t> const &StorageRefCount,
+	OptionalT<StorageReferenceCountT> const &StorageRefCount,
 	bool const &DeleteMissing)
 {
+	LOG(Log, Spam, (StringT() << "Adding change " << Change.ChangeID() << "---"));
 	Database->InsertChange(Change);
 	ChangeAddListeners.Notify(Change);
 
@@ -189,7 +190,8 @@ void CoreT::Handle(
 
 	if (StorageRefCount)
 	{
-		Database->SetStorageRefCount(*StorageID, StorageRefCount);
+		Database->SetStorageRefCount(*StorageID, *StorageRefCount);
+		LOG(Log, Spam, StringT() << "New missing: setting storage " << *StorageID << " to " << (int)**StorageRefCount);
 	}
 
 	Database->InsertMissing(
@@ -202,35 +204,45 @@ void CoreT::Handle(
 
 void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, DeleteHeadT> const &Definition)
 {
+	LOG(Log, Spam, (StringT() << "Defining change " << ChangeID << "---"));
 	OptionalT<ChangeIDT> DeleteParent;
 	//auto Now = time(nullptr);
 	HeadT NewHead;
 	NewHead.ChangeID() = ChangeID;
 
 	OptionalT<StorageIDT> StorageID;
-	OptionalT<size_t> StorageRefCount;
+	OptionalT<StorageReferenceCountT> StorageRefCount;
+	Assert(!StorageRefCount);
 
 	auto Missing = Database->GetMissing(ChangeID);
 	if (!Missing)
 	{
-		Log(LogT::Warning, StringT() << "Attempting to define change with no Missing: " << ChangeID);
+		LOG(Log, Warning, (StringT() << "Attempting to define change with no Missing: " << ChangeID));
 		return;
 	}
 	StorageID = Missing->StorageID();
 	if (StorageID)
 	{
+		LOG(Log, Spam, (StringT() << "Missing has storage " << *StorageID));
 		auto Storage = *Database->GetStorage(*StorageID);
-		StorageRefCount = Storage.ReferenceCount() - 1;
+		AssertGT(Storage.ReferenceCount(), StorageReferenceCountT(0));
+		StorageRefCount = Storage.ReferenceCount() - StorageReferenceCountT(1);
 	}
 	if (Missing->HeadID())
 		if (auto Head = Database->GetHead(GlobalChangeIDT(ChangeID.NodeID(), *Missing->HeadID())))
 		{
+			LOG(Log, Spam, (StringT() << "Missing has valid head " << *Missing->HeadID()));
 			DeleteParent = Missing->HeadID();
 			NewHead = *Head;
-			if (StorageRefCount) *StorageRefCount -= 1;
+			NewHead.ChangeID() = ChangeID;
+			if (StorageRefCount) 
+			{
+				AssertGT(*StorageRefCount, StorageReferenceCountT(0));
+				*StorageRefCount -= StorageReferenceCountT(1);
+			}
 		}
 
-	assert(Definition);
+	Assert(Definition);
 	if (Definition.Is<DefineHeadT>())
 	{
 		auto const &DefineHead = Definition.Get<DefineHeadT>();
@@ -239,19 +251,22 @@ void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, 
 			if (!DefineHead.StorageChanges)
 			{
 				NewHead.StorageID() = StorageID;
-				*StorageRefCount += 1;
+				*StorageRefCount += StorageReferenceCountT(1);
+				LOG(Log, Spam, (StringT() << "No storage changes, reusing " << *StorageID << "(" << (int)**StorageRefCount << ")"));
 			}
 			else
 			{
-				if (*StorageRefCount == 0)
+				if (*StorageRefCount == StorageReferenceCountT(0))
 				{
-					NewHead.StorageID() = Missing->StorageID();
-					*StorageRefCount += 1;
+					NewHead.StorageID() = StorageID;
+					*StorageRefCount += StorageReferenceCountT(1);
+					LOG(Log, Spam, (StringT() << "Storage changes but no other storage references, reusing " << *StorageID << "(" << (int)**StorageRefCount << ")"));
 				}
 				else
 				{
 					NewHead.StorageID() = Database->GetStorageCounter();
 					Database->IncrementStorageCounter();
+					LOG(Log, Spam, (StringT() << "Storage changes but other storage references, creating new " << *NewHead.StorageID() << "(" << (int)**StorageRefCount << ")"));
 				}
 			}
 		}
@@ -261,6 +276,7 @@ void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, 
 			{
 				NewHead.StorageID() = Database->GetStorageCounter();
 				Database->IncrementStorageCounter();
+				LOG(Log, Spam, (StringT() << "No existing storage, creating new " << *NewHead.StorageID()));
 			}
 		}
 		NewHead.Meta() = DefineHead.MetaChanges;
@@ -287,7 +303,7 @@ void CoreT::DefineChange(GlobalChangeIDT const &ChangeID, VariantT<DefineHeadT, 
 void CoreT::Handle(
 	CTV1UpdateDeleteHead,
 	OptionalT<StorageIDT> const &StorageID,
-	OptionalT<size_t> const &StorageRefCount,
+	OptionalT<StorageReferenceCountT> const &StorageRefCount,
 	GlobalChangeIDT const &ChangeID,
 	OptionalT<ChangeIDT> const &DeleteParent,
 	OptionalT<HeadT> const &NewHead,
@@ -297,8 +313,10 @@ void CoreT::Handle(
 	Database->DeleteMissing(GlobalChangeIDT(ChangeID.NodeID(), ChangeID.ChangeID()));
 	if (DeleteParent)
 	{
-		HeadRemoveListeners.Notify(GlobalChangeIDT(ChangeID.NodeID(), *DeleteParent));
-		Database->DeleteHead(GlobalChangeIDT(ChangeID.NodeID(), *DeleteParent));
+		auto const HeadID = GlobalChangeIDT(ChangeID.NodeID(), *DeleteParent);
+		HeadRemoveListeners.Notify(HeadID);
+		Database->DeleteHead(HeadID);
+		LOG(Log, Spam, (StringT() << "Deleting head " << HeadID));
 	}
 	if (NewHead)
 	{
@@ -307,6 +325,7 @@ void CoreT::Handle(
 			auto NewStoragePath = GetStoragePath(*NewHead->StorageID());
 			if (StorageChanges.Is<TruncateT>())
 			{
+				LOG(Log, Spam, StringT() << "Truncating " << NewStoragePath.Render());
 				Filesystem::FileT::OpenWrite(NewStoragePath.Render());
 			}
 			else
@@ -315,20 +334,26 @@ void CoreT::Handle(
 
 				Filesystem::FileT NewStorage;
 
-				if (StorageID && (StorageID != NewHead->StorageID()))
+				if (!StorageID) 
+				{
+					LOG(Log, Spam, StringT() << "Creating file " << NewStoragePath.Render());
+					NewStorage = Filesystem::FileT::OpenWrite(NewStoragePath);
+				}
+				else if (StorageID != NewHead->StorageID())
 				{
 					// If modifying old storage
 					auto OldStoragePath = GetStoragePath(*StorageID);
 					auto OldStorage = Filesystem::FileT::OpenRead(OldStoragePath);
+					LOG(Log, Spam, StringT() << "Copying to " << NewStoragePath.Render());
 					NewStorage = Filesystem::FileT::OpenWrite(NewStoragePath);
 					std::vector<uint8_t> Buffer;
 					while (OldStorage.Read(Buffer)) NewStorage.Write(Buffer);
 				}
-				else
+				else 
 				{
-					// If no old storage, but making modifications
-					if (!StorageID) NewStorage = Filesystem::FileT::OpenWrite(NewStoragePath);
-					else NewStorage = Filesystem::FileT::OpenModify(NewStoragePath);
+					LOG(Log, Spam, StringT() << "Old storage is " << *StorageID);
+					LOG(Log, Spam, StringT() << "Opening to modify " << NewStoragePath.Render());
+					NewStorage = Filesystem::FileT::OpenModify(NewStoragePath);
 				}
 
 				for (auto const &Change : Changes)
@@ -339,12 +364,12 @@ void CoreT::Handle(
 			}
 		}
 		Database->InsertHead(*NewHead);
-		if (NewHead->StorageID()) Database->InsertStorage(*NewHead->StorageID());
+		if (NewHead->StorageID() != StorageID) Database->InsertStorage(*NewHead->StorageID());
 		HeadAddListeners.Notify(ChangeID);
 	}
 	if (StorageRefCount)
 	{
-		if (*StorageRefCount == 0)
+		if (*StorageRefCount == StorageReferenceCountT(0))
 		{
 			GetStoragePath(*StorageID).Delete();
 			Database->DeleteStorage(*StorageID);
@@ -423,7 +448,7 @@ Filesystem::FileT CoreT::Open(StorageIDT const &Storage)
 void CoreT::DumpGraphviz(std::string const &RawPath)
 {
 	auto Out = Filesystem::FileT::OpenWrite(Filesystem::PathT::Qualify(RawPath));
-	Out.Write(StringT() << "digraph\n{\n\n");
+	Out.Write(StringT() << "digraph \"" << RawPath << "\"\n{\n\n");
 	constexpr size_t ListSize = 10;
 
 	OptionalT<NodeIDT> LastNode;
@@ -449,7 +474,9 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 			if (Change.ParentID())
 				Out.Write(StringT() << 
 					" -> \"" << 
-					GlobalChangeIDT(Change.ChangeID().NodeID(), *Change.ParentID()) <<
+					GlobalChangeIDT(
+						Change.ChangeID().NodeID(), 
+						*Change.ParentID()) <<
 					"\"");
 			else Out.Write("");
 			Out.Write(StringT() << ";\n");
@@ -467,13 +494,16 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 			Out.Write(StringT() << 
 				"{ " <<
 					"\"m" << Missing.ChangeID() << "\" " <<
-					"[label = \"\", shape = box, color = blue] " <<
+					"[label = \"m\", shape = box, color = blue] " <<
 				"} " <<
 				"-> \"" << Missing.ChangeID() << "\";\n");
 			if (Missing.HeadID())
 				Out.Write(StringT() << 
 					"\"m" << Missing.ChangeID() << "\" " <<
-					"-> \"h" << *Missing.HeadID() << "\";\n");
+					"-> \"h" << GlobalChangeIDT(
+						Missing.ChangeID().NodeID(), 
+						*Missing.HeadID()) << "\""
+					";\n");
 		}
 		if (Missings.size() < ListSize) break;
 	}
@@ -486,13 +516,15 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 			Out.Write(StringT() << 
 				"{ " <<
 					"\"h" << Head.ChangeID() << "\" " <<
-					"[label = \"\", shape = box, color = green] " <<
+					"[label = \"h\", shape = box, color = green] " <<
 				"} " <<
-				"-> \"" << Head.ChangeID() << "\";\n");
+				"-> \"" << Head.ChangeID() << "\""
+				";\n");
 			if (Head.StorageID())
 				Out.Write(StringT() << 
 					"\"h" << Head.ChangeID() << "\" " <<
-					"-> \"s" << *Head.StorageID() << "\";\n");
+					"-> \"s" << *Head.StorageID() << "\""
+					";\n");
 		}
 		if (Heads.size() < ListSize) break;
 	}
@@ -505,7 +537,7 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 			Out.Write(StringT() << 
 				"{ "
 					"\"s" << AStorage.StorageID() << "\" " <<
-					"[label = \"" << AStorage.StorageID() << "\", shape = box, color = brown] "
+					"[label = \"s " << AStorage.StorageID() << " (" << (int)*AStorage.ReferenceCount() << ")\", shape = box, color = brown] "
 				"};\n");
 		}
 		if (Storage.size() < ListSize) break;

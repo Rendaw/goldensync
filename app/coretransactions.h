@@ -12,13 +12,13 @@ DefineProtocolMessage(CTV1AddChange, CoreTransactorVersion1,
 		ChangeT Change,
 		OptionalT<ChangeIDT> HeadID,
 		OptionalT<StorageIDT> StorageID,
-		OptionalT<size_t> StorageRefCount,
+		OptionalT<StorageReferenceCountT> StorageRefCount,
 		bool DeleteMissing))
 
 DefineProtocolMessage(CTV1UpdateDeleteHead, CoreTransactorVersion1,
 	void(
 		OptionalT<StorageIDT> StorageID,
-		OptionalT<size_t> StorageRefCount,
+		OptionalT<StorageReferenceCountT> StorageRefCount,
 		GlobalChangeIDT ChangeID,
 		OptionalT<ChangeIDT> DeleteParent,
 		OptionalT<HeadT> NewHead,

@@ -104,12 +104,12 @@ struct CoreT
 		ChangeT const &Change,
 		OptionalT<ChangeIDT> const &HeadID,
 		OptionalT<StorageIDT> const &StorageID, 
-		OptionalT<size_t> const &StorageRefCount,
+		OptionalT<StorageReferenceCountT> const &StorageRefCount,
 		bool const &DeleteMissing);
 	void Handle(
 		CTV1UpdateDeleteHead,
 		OptionalT<StorageIDT> const &StorageID, 
-		OptionalT<size_t> const &StorageRefCount,
+		OptionalT<StorageReferenceCountT> const &StorageRefCount,
 		GlobalChangeIDT const &ChangeID,
 		OptionalT<ChangeIDT> const &DeleteParent,
 		OptionalT<HeadT> const &NewHead,

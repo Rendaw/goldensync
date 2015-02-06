@@ -17,7 +17,6 @@ template <> struct DBImplm<std::string>
 		int &Index, 
 		std::string const &Value)
 	{
-		std::cout << "           Bind string at " << Index << std::endl;
 		if (sqlite3_bind_text(Context, Index, Value.c_str(), static_cast<int>(Value.size()), nullptr) != SQLITE_OK)
 			throw SystemErrorT() << "Could not bind argument " << Index << " to \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 		++Index;
@@ -27,7 +26,6 @@ template <> struct DBImplm<std::string>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
-		std::cout << "           Bind null string at " << Index << std::endl;
 		sqlite3_bind_null(Context, Index++);
 	}
 
@@ -35,7 +33,6 @@ template <> struct DBImplm<std::string>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{ 
-		std::cout << "           Unbind string at " << Index << std::endl;
 		return (char const *)sqlite3_column_text(Context, Index++); 
 	}
 	
@@ -59,7 +56,6 @@ template <typename IntegerT>
 		int &Index, 
 		IntegerT const &Value)
 	{
-		std::cout << "           Bind int at " << Index << std::endl;
 		static_assert(sizeof(Value) <= sizeof(int64_t), "Value is too big for sqlite");
 		int Result = 0;
 		if (sizeof(Value) < sizeof(int))
@@ -79,7 +75,6 @@ template <typename IntegerT>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
-		std::cout << "           Bind null int at " << Index << std::endl;
 		sqlite3_bind_null(Context, Index++);
 	}
 
@@ -87,7 +82,6 @@ template <typename IntegerT>
 		sqlite3_stmt *Context, 
 		int &Index)
 	{
-		std::cout << "           Unbind int at " << Index << std::endl;
 		static_assert(sizeof(IntegerT) <= sizeof(int64_t), "Integer type is too big for sqlite");
 		if (sizeof(IntegerT) < sizeof(int))
 			return static_cast<IntegerT>(sqlite3_column_int(Context, Index++));

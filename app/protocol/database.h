@@ -8,6 +8,7 @@
 #include "../../ren-cxx-basics/extrastandard.h"
 #include "../../ren-cxx-filesystem/path.h"
 #include "databaseoperations.h"
+#include "../log.h"
 
 template <typename Classification> struct Type {};
 /*template <typename Classification> struct Binary {};
@@ -15,11 +16,19 @@ template <typename Classification> using BinaryType = Type<Binary<Classification
 
 struct SQLDatabaseT
 {
-	inline SQLDatabaseT(OptionalT<Filesystem::PathT> const &Path = {}) : Context(nullptr)
+	inline SQLDatabaseT(OptionalT<Filesystem::PathT> const &Path = {}) : Context(nullptr), Log("sqlite")
 	{
 		if ((!Path && (sqlite3_open(":memory:", &Context) != 0)) ||
 			(Path && (sqlite3_open(Path->Render().c_str(), &Context) != 0)))
 			throw SystemErrorT() << "Could not create database: " << sqlite3_errmsg(Context);
+		if (sqlite3_config(SQLITE_CONFIG_SINGLETHREAD) != SQLITE_OK)
+			LOG(Log, Warning, "Could not disable sqlite locking.");
+#ifndef NDEBUG
+		/*sqlite3_trace(Context, [](void *, char const *Statement)
+		{
+			LOG(Log, Spam, String() << "(sqlite statement)" << Statement);
+		}, nullptr);*/
+#endif
 	}
 
 	inline ~SQLDatabaseT(void)
@@ -58,7 +67,6 @@ struct SQLDatabaseT
 			if (sizeof...(Arguments) > 0)
 			{
 				int BindIndex = 1;
-				std::cout << "+Starting bind" << std::endl;
 				Bind(BaseContext, Context, BindIndex, Arguments...);
 			}
 			while (true)
@@ -68,7 +76,6 @@ struct SQLDatabaseT
 				if (Result != SQLITE_ROW)
 					throw SystemErrorT() << "Could not execute query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 				int UnbindIndex = 0;
-				std::cout << "-Starting unbind" << std::endl;
 				Unbind<ResultT...>(Context, UnbindIndex, Function);
 			}
 			sqlite3_reset(Context);
@@ -128,7 +135,6 @@ struct SQLDatabaseT
 					NextT const &Value, 
 					RemainingT const &...Remaining)
 			{
-				std::cout << "  binding at " << Index << std::endl;
 				DBImplm<NextT>::Bind(
 					BaseContext, 
 					Context, 
@@ -152,7 +158,6 @@ struct SQLDatabaseT
 					function<void(ResultT && ...)> const &Function, 
 					ReadT && ...ReadData)
 			{
-				std::cout << "  unbinding at " << Index << std::endl;
 				Unbind<RemainingT...>(
 					Context, 
 					Index, 
@@ -206,6 +211,7 @@ struct SQLDatabaseT
 	template <typename SignatureT> friend struct StatementT;
 	private:
 		sqlite3 *Context;
+		BasicLogT Log;
 };
 
 #endif

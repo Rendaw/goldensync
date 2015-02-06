@@ -82,12 +82,13 @@ struct CoreDatabaseBaseT : SQLDatabaseT
 				"\"ChangeIndex\" INTEGER NOT NULL , "
 				"\"HeadInstance\" INTEGER , "
 				"\"HeadIndex\" INTEGER , "
-				"\"StorageIndex\" INTEGER " 
+				"\"StorageIndex\" INTEGER , " 
+				"PRIMARY KEY (\"NodeInstance\", \"NodeIndex\", \"ChangeInstance\", \"ChangeIndex\")"
 			")");
 			
 			Execute("CREATE TABLE \"Storage\" "
 			"("
-				"\"StorageIndex\" INTEGER NOT NULL , "
+				"\"StorageIndex\" INTEGER PRIMARY KEY , "
 				"\"ReferenceCount\" INTEGER NOT NULL "
 			")");
 		}
@@ -140,7 +141,7 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 	StatementT<StorageT (StorageIndexT const &ID)> GetStorage;
 	StatementT<void (StorageIDT const &StorageID)> InsertStorage;
 	StatementT<void (StorageIndexT const &ID)> DeleteStorage;
-	StatementT<void (StorageIndexT const &ID, uint16_t RefCount)> SetStorageRefCount;
+	StatementT<void (StorageIndexT const &ID, StorageReferenceCountT RefCount)> SetStorageRefCount;
 
 	inline CoreDatabaseT(Filesystem::PathT const &DatabasePath) : 
 		CoreDatabaseBaseT(DatabasePath),
@@ -205,7 +206,7 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 		DeleteStorage(this,
 			"DELETE FROM \"Storage\" WHERE \"StorageIndex\" = ?"),
 		SetStorageRefCount(this,
-			"UPDATE \"Storage\" SET \"ReferenceCount\" = ? WHERE \"StorageIndex\" = ?")
+			"UPDATE \"Storage\" SET \"ReferenceCount\" = ?2 WHERE \"StorageIndex\" = ?1")
 	{
 	}
 };

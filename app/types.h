@@ -12,6 +12,7 @@ typedef uint64_t IDBaseT;
 typedef StrictType(IDBaseT) NodeIndexT;
 typedef StrictType(IDBaseT) ChangeIndexT;
 typedef StrictType(IDBaseT) StorageIndexT;
+typedef StrictType(uint8_t) StorageReferenceCountT;
 typedef uint64_t TimeT; // UTC seconds since Jan 1 1970
 
 typedef StorageIndexT StorageIDT;
