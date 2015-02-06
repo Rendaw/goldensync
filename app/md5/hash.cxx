@@ -12,8 +12,9 @@ extern "C"
 std::string FormatHash(HashT const &Hash)
 {
 	std::stringstream Display;
-	Display << std::hex << std::setw(2);
-	for (auto Byte : Hash) Display << static_cast<unsigned int>(Byte);
+	for (auto Byte : Hash) Display << 
+		std::hex << std::setw(2) << std::setfill('0') <<
+		static_cast<unsigned int>(Byte);
 	return Display.str();
 }
 

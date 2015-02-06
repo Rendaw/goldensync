@@ -445,6 +445,112 @@ Filesystem::FileT CoreT::Open(StorageIDT const &Storage)
 	return Filesystem::FileT::OpenRead(GetStoragePath(Storage));
 }
 	
+bool CoreT::Validate(void)
+{
+	BasicLogT Log("validate");
+
+	bool Passed = true;
+
+	constexpr size_t ListSize = 10;
+
+	// Storage exists for relevant heads
+	// Change for each head exists
+	while (true)
+	{
+		auto Heads = ListHeads(0, ListSize);
+		for (auto const &Head : Heads)
+		{
+			if (!Database->GetChange(Head.ChangeID()))
+			{
+				LOG(Log, Error, (StringT() <<
+					"Missing change for head. " <<
+					"Head: " << Head.ChangeID() << "," 
+					"Storage ID: " << *Head.StorageID()));
+				Passed = false;
+			}
+
+			if (Head.StorageID())
+			{
+				auto Storage = Database->GetStorage(*Head.StorageID());
+				if (!Storage) 
+				{
+					LOG(Log, Error, (StringT() << 
+						"Missing storage for head. " << 
+						"Head: " << Head.ChangeID() << "," 
+						"Storage ID: " << *Head.StorageID()));
+					Passed = false;
+				}
+			}
+		}
+		if (Heads.size() < ListSize) break;
+	}
+
+	// Storage exists for relevant missings
+	// Change exists for each missing
+	// No parent of a missing can have a missing
+	while (true)
+	{
+		auto Missings = ListMissing(0, ListSize);
+		for (auto const &Missing : Missings)
+		{
+			auto PreChange = Database->GetChange(Missing.ChangeID());
+			if (!PreChange)
+			{
+				LOG(Log, Error, (StringT() <<
+					"Missing change for missing. " <<
+					"Missing: " << Missing.ChangeID() << "," 
+					"Storage ID: " << *Missing.StorageID()));
+				Passed = false;
+			}
+			ChangeT Change = *PreChange;
+			while (Change.ParentID())
+			{
+				if (!(PreChange = Database->GetChange(
+					GlobalChangeIDT(
+						Change.ChangeID().NodeID(), 
+						*Change.ParentID())))) break;
+				Change = *PreChange;
+
+				auto ParentMissing = Database->GetMissing(Change.ChangeID());
+				if (ParentMissing)
+				{
+					LOG(Log, Error, (StringT() <<
+						"Multiple missings in single chain. " <<
+						"Top missing: " << Missing.ChangeID() << ", " 
+						"Lower missing: " << ParentMissing->ChangeID()));
+					Passed = false;
+				}
+			}
+
+			if (Missing.StorageID())
+			{
+				auto Storage = Database->GetStorage(*Missing.StorageID());
+				if (!Storage) 
+				{
+					LOG(Log, Error, (StringT() << 
+						"Missing storage for missing. " << 
+						"Missing: " << Missing.ChangeID() << "," 
+						"Storage ID: " << *Missing.StorageID()));
+					Passed = false;
+				}
+			}
+
+		}
+		if (Missings.size() < ListSize) break;
+	}
+
+	// All primary heads in each directory unique
+	// TODO
+
+	// For each split, all heads in each directory unique
+	// TODO
+
+	// Modified >= created
+	// TODO
+
+	return Passed;
+}
+
 void CoreT::DumpGraphviz(std::string const &RawPath)
 {
 	auto Out = Filesystem::FileT::OpenWrite(Filesystem::PathT::Qualify(RawPath));

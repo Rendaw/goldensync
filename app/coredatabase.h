@@ -124,6 +124,7 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 	StatementT<InstanceIndexT (void)> GetLastInstance;
 
 	StatementT<ChangeT (size_t Start, size_t Count)> ListChanges;
+	StatementT<ChangeT (GlobalChangeIDT const &ID)> GetChange;
 	StatementT<void (ChangeT const &Change)> InsertChange;
 
 	StatementT<MissingT (size_t Start, size_t Count)> ListMissing;
@@ -174,6 +175,8 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 
 		ListChanges(this,
 			"SELECT * FROM \"Changes\" LIMIT ?,?"),
+		GetChange(this,
+			"SELECT * FROM \"Changes\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ? LIMIT 1"),
 		InsertChange(this,
 			"INSERT INTO \"Changes\" VALUES (?, ?, ?, ?, ?, ?)"),
 
