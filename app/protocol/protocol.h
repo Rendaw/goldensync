@@ -51,7 +51,7 @@ template <typename Type>
 }
 
 template <typename Type> 
-	bool ProtocolRead(
+	void ProtocolRead(
 		Protocol::VersionIDT const &VersionID,
 		Protocol::MessageIDT const &MessageID,
 		uint8_t const *Buffer,
@@ -59,7 +59,7 @@ template <typename Type>
 		Protocol::SizeT &Offset,
 		Type &Data)
 { 
-	return ProtocolOperations<Type>::Read(VersionID, MessageID, Buffer, BufferSize, Offset, Data); 
+	ProtocolOperations<Type>::Read(VersionID, MessageID, Buffer, BufferSize, Offset, Data); 
 }
 
 namespace Protocol
@@ -106,7 +106,7 @@ template <MessageIDT::Type IDValue, typename InVersion, typename ...Definition>
 		ProtocolWrite(WritePointer, InVersion::ID);
 		ProtocolWrite(WritePointer, ID);
 		ProtocolWrite(WritePointer, (SizeT::Type)RequiredSize);
-		Write(WritePointer, Arguments...);
+		Write(WritePointer, std::forward<Definition const &>(Arguments)...);
 		return Out;
 	}
 
@@ -118,7 +118,7 @@ template <MessageIDT::Type IDValue, typename InVersion, typename ...Definition>
 		{ 
 			return 
 				ProtocolGetSize(NextArgument) + 
-				Size(RemainingArguments...); 
+				Size(std::forward<RemainingTypes>(RemainingArguments)...); 
 		}
 
 		static constexpr size_t Size(void) { return {0}; }
@@ -199,7 +199,7 @@ template
 
 	protected:
 		template <typename HandlerT, typename... ExtraT>
-			bool Read(
+			void Read(
 				HandlerT &Handler,
 				VersionIDT const &VersionID,
 				MessageIDT const &MessageID,
@@ -210,7 +210,7 @@ template
 			if ((VersionID == MessageType::Version::ID) && (MessageID == MessageType::ID))
 			{
 				SizeT Offset{(SizeT::Type)0};
-				return ReadImplementation
+				ReadImplementation
 				<
 					HandlerT, 
 					typename MessageDerivedTypes<>::Tuple, 
@@ -223,8 +223,9 @@ template
 					BufferSize,
 					Offset, 
 					std::forward<ExtraT const &>(Extra)...);
+				return;
 			}
-			return NextElement::Read(
+			NextElement::Read(
 				Handler, 
 				VersionID, 
 				MessageID, 
@@ -258,7 +259,7 @@ template
 				std::tuple<ReadTypes...>
 			>
 		{
-			static bool Read(
+			static void Read(
 				HandlerT &Handler,
 				VersionIDT const &VersionID,
 				MessageIDT const &MessageID,
@@ -268,14 +269,14 @@ template
 				ReadTypes const &...ReadData)
 			{
 				NextType Data;
-				if (!ProtocolRead(
+				ProtocolRead(
 					VersionID, 
 					MessageID,
 					Buffer,
 					BufferSize,
 					Offset,
-					Data)) return false;
-				return ReadImplementation
+					Data);
+				ReadImplementation
 				<
 					HandlerT, 
 					std::tuple<RemainingTypes...>, 
@@ -304,7 +305,7 @@ template
 				std::tuple<ReadTypes...>
 			>
 		{
-			static bool Read(
+			static void Read(
 				HandlerT &Handler,
 				VersionIDT const &VersionID,
 				MessageIDT const &MessageID,
@@ -316,7 +317,6 @@ template
 				Handler.Handle(
 					MessageType{}, 
 					std::forward<ReadTypes const &>(ReadData)...);
-				return true;
 			}
 		};
 };
@@ -368,15 +368,14 @@ struct ReaderTupleElement
 >
 {
 	template <typename HandlerT> 
-		bool Read(
+		void Read(
 			HandlerT &Handler,
 			VersionIDT const &VersionID,
 			MessageIDT const &MessageID,
 			uint8_t const *Buffer,
 			SizeT const BufferSize)
 	{
-		assert(false);
-		return false;
+		throw SYSTEM_ERROR << "Invalid message type " << StrictCast(VersionID, unsigned int) << ":" << StrictCast(MessageID, unsigned int);
 	}
 };
 
@@ -384,7 +383,7 @@ template <typename ...MessageTypes>
 	struct ReaderT : ReaderTupleElement<0, 0, void, MessageTypes...>
 {
 	template <typename StreamT, typename HandlerT, typename... ExtraT> 
-		bool Read(
+		void Read(
 			StreamT &&Stream,
 			HandlerT &Handler,
 			ExtraT const ...Extra)
@@ -392,22 +391,22 @@ template <typename ...MessageTypes>
 		while (true)
 		{
 			auto Header = Stream.FilledStart(StrictCast(HeaderSize, size_t));
-			if (!Header) return true;
-			VersionIDT const VersionID = *reinterpret_cast<VersionIDT *>(&Header[0]);
-			MessageIDT const MessageID = *reinterpret_cast<MessageIDT *>(&Header[VersionIDT::Size]);
-			SizeT const DataSize = *reinterpret_cast<SizeT *>(&Header[VersionIDT::Size + MessageIDT::Size]);
+			if (!Header) return;
+			VersionIDT const VersionID = *reinterpret_cast<VersionIDT const *>(&Header[0]);
+			MessageIDT const MessageID = *reinterpret_cast<MessageIDT const *>(&Header[VersionIDT::Size]);
+			SizeT const DataSize = *reinterpret_cast<SizeT const *>(
+				&Header[VersionIDT::Size + MessageIDT::Size]);
 
 			auto Body = Stream.FilledStart(StrictCast(DataSize, size_t), StrictCast(HeaderSize, size_t));
-			if ((DataSize > SizeT(0)) && !Body) return true;
+			if ((DataSize > SizeT(0)) && !Body) return;
 
-			auto Success = HeadElement::Read(
+			HeadElement::Read(
 				Handler, 
 				VersionID, 
 				MessageID, 
 				Body, 
 				DataSize, 
 				Extra...);
-			if (!Success) return false;
 
 			Stream.Consume(StrictCast(HeaderSize + DataSize, size_t));
 		}

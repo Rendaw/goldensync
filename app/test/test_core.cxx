@@ -40,29 +40,26 @@ bool FrameInner(
 	// for iostep runs, return true == need more steps
 	bool GoDeeper = false;
 
-	std::vector<MissingT> OriginalMissing;
+	std::vector<MissingT> OriginalMissings;
 	std::vector<HeadT> OriginalHeads;
 	std::vector<ChangeT> OriginalChanges;
 	std::vector<StorageT> OriginalStorage;
 
 	static auto const Root = Filesystem::PathT::Qualify("test_data");
 
-	/*
-	FinallyT Finally([&](void) 
+	/*FinallyT Finally([&](void) 
 	{
-		std::cout << "Deleting root " << Root << std::endl;
-		Root.DeleteDirectory(); 
-		Assert(!Root.Exists());
-	});
-	*/
+		Clunker->Clean().get();
+	});*/
 
+	std::cout << "  - primary" << std::endl;
 	{
 		CoreT Core({"test"}, Root);
 		FinallyT Finally([&](void)
 		{
 			Core.DumpGraphviz("post.dot");
 		});
-		AssertE(Core.GetThisInstance(), 1);
+		AssertE(Core.GetThisInstance(), 1u);
 		if (Control.Is<IOStepsT>())
 		{
 			Assert(Clunker->SetOpCount(*Control.Get<IOStepsT>()).get());
@@ -73,25 +70,25 @@ bool FrameInner(
 			Assert(Core.Validate());
 			while (true)
 			{
-				auto Missings = Core.ListMissing(0, ListSize);
-				OriginalMissing.insert(OriginalMissing.end(), Missings.begin(), Missings.end());
+				auto Missings = Core.ListMissing(OriginalMissings.size(), ListSize);
+				OriginalMissings.insert(OriginalMissings.end(), Missings.begin(), Missings.end());
 				if (Missings.size() < ListSize) break;
 			} 
 			while (true)
 			{
-				auto Heads = Core.ListHeads(0, ListSize);
+				auto Heads = Core.ListHeads(OriginalHeads.size(), ListSize);
 				OriginalHeads.insert(OriginalHeads.end(), Heads.begin(), Heads.end());
 				if (Heads.size() < ListSize) break;
 			} 
 			while (true)
 			{
-				auto Changes = Core.ListChanges(0, ListSize);
+				auto Changes = Core.ListChanges(OriginalChanges.size(), ListSize);
 				OriginalChanges.insert(OriginalChanges.end(), Changes.begin(), Changes.end());
 				if (Changes.size() < ListSize) break;
 			} 
 			while (true)
 			{
-				auto Storage = Core.ListStorage(0, ListSize);
+				auto Storage = Core.ListStorage(OriginalStorage.size(), ListSize);
 				OriginalStorage.insert(OriginalStorage.end(), Storage.begin(), Storage.end());
 				if (Storage.size() < ListSize) break;
 			} 
@@ -99,81 +96,86 @@ bool FrameInner(
 		else if (Control.Is<IOStepsT>())
 		{
 			auto const Count = Clunker->GetOpCount().get();
+			std::cout << "End test count " << Count << std::endl;
 			if (Count == 0u) GoDeeper = true;
 			Assert(Clunker->SetOpCount(-1).get());
 		}
 	}
+	
+	std::cout << "  - secondary" << std::endl;
 	{
 		CoreT Core({"test"}, Root);
-		AssertE(Core.GetThisInstance(), 1);
+		AssertE(Core.GetThisInstance(), 1u);
 		Assert(Core.Validate());
 		if (Control.Is<NormalRunT>())
 		{
 			{
-				size_t Count = 0;
+				size_t Offset = 0;
 				while (true)
 				{
-					auto NewMissing = Core.ListMissing(0, 10);
+					auto NewMissing = Core.ListMissing(Offset, 10);
 					if (NewMissing.empty()) break;
 					for (auto const &Missing : NewMissing)
 					{
-						AssertLT(Count, OriginalMissing.size());
-						AssertE(Missing, OriginalMissing[Count++]);
+						AssertLT(Offset, OriginalMissings.size());
+						AssertE(Missing, OriginalMissings[Offset++]);
 					}
 					if (NewMissing.size() < ListSize) break;
 				} 
-				AssertE(Count, OriginalMissing.size());
+				AssertE(Offset, OriginalMissings.size());
 			}
 			{
-				size_t Count = 0;
+				size_t Offset = 0;
 				while (true)
 				{
-					auto NewHeads = Core.ListHeads(0, 10);
+					auto NewHeads = Core.ListHeads(Offset, 10);
 					if (NewHeads.empty()) break;
 					for (auto const &Head : NewHeads)
 					{
-						AssertLT(Count, OriginalHeads.size());
-						AssertE(Head, OriginalHeads[Count++]);
+						AssertLT(Offset, OriginalHeads.size());
+						AssertE(Head, OriginalHeads[Offset++]);
 					}
 					if (NewHeads.size() < ListSize) break;
 				} 
-				AssertE(Count, OriginalHeads.size());
+				AssertE(Offset, OriginalHeads.size());
 			}
 			{
-				size_t Count = 0;
+				size_t Offset = 0;
 				while (true)
 				{
-					auto NewChanges = Core.ListChanges(0, 10);
+					auto NewChanges = Core.ListChanges(Offset, 10);
 					if (NewChanges.empty()) break;
 					for (auto const &Change : NewChanges)
 					{
-						AssertLT(Count, OriginalChanges.size());
-						AssertE(Change, OriginalChanges[Count++]);
+						AssertLT(Offset, OriginalChanges.size());
+						AssertE(Change, OriginalChanges[Offset++]);
 					}
 					if (NewChanges.size() < ListSize) break;
 				} 
-				AssertE(Count, OriginalChanges.size());
+				AssertE(Offset, OriginalChanges.size());
 			}
 			{
-				size_t Count = 0;
+				size_t Offset = 0;
 				while (true)
 				{
-					auto NewStorage = Core.ListStorage(0, 10);
+					auto NewStorage = Core.ListStorage(Offset, 10);
 					if (NewStorage.empty()) break;
 					for (auto const &Storage : NewStorage)
 					{
-						AssertLT(Count, OriginalStorage.size());
-						AssertE(Storage, OriginalStorage[Count++]);
+						AssertLT(Offset, OriginalStorage.size());
+						AssertE(Storage, OriginalStorage[Offset++]);
 					}
 					if (NewStorage.size() < ListSize) break;
 				} 
-				AssertE(Count, OriginalStorage.size());
+				AssertE(Offset, OriginalStorage.size());
 			}
 		}
 	}
-		
-	Root.DeleteDirectory(); 
 
+	/*std::cout << "Cleanin" << std::endl;
+	Assert(Clunker->Clean().get());*/
+	Root.DeleteDirectory();
+		
 	return GoDeeper;
 }
 
@@ -182,11 +184,16 @@ template <typename CallbackT>
 	void Frame(CallbackT const &Callback, std::shared_ptr<ClunkerControlT> &Clunker)
 {
 	std::cout << "--- TEST " << TestLabelCount++ << " ---" << std::endl;
+	std::cout << " == plain == " << std::endl;
 	FrameInner(Callback, NormalRunT(), Clunker);
 	if (Clunker)
 	{
 		auto Steps = IOStepsT(0u);
-		while (FrameInner(Callback, Steps++, Clunker)) {};
+		while (true) 
+		{
+			std::cout << " == steps " << Steps << " == " << std::endl;
+			if (!FrameInner(Callback, Steps++, Clunker)) break;
+		}
 	}
 }
 
@@ -235,24 +242,36 @@ int main(void)
 		asio::io_service MainService;
 		std::thread ClunkerThread;
 		std::shared_ptr<ClunkerControlT> Clunker;
+		FinallyT ClunkerCleanup;
 		//Assert(getenv("CLUNKER_PORT"));
 		if (getenv("CLUNKER_PORT"))
 		{
 			int16_t Port = 0;
-			Assert(StringT(getenv("CLUNKER_PORT")) >> Port);
-			ClunkerThread = std::thread([&, Port](void)
+			Assert(!!(StringT(getenv("CLUNKER_PORT")) >> Port));
+			std::promise<std::shared_ptr<ClunkerControlT>> ClunkerPromise;
+			auto ClunkerFuture = ClunkerPromise.get_future();
+			ClunkerThread = std::thread(
+				[&MainService, Port, ClunkerPromise = std::move(ClunkerPromise)]
+					(void) mutable
+				{
+					ConnectClunker(
+						MainService,
+						asio::ip::tcp::endpoint(
+							asio::ip::address_v4::loopback(),
+							Port),
+						[ClunkerPromise = std::move(ClunkerPromise)]
+							(std::shared_ptr<ClunkerControlT> NewClunker) mutable
+						{
+							ClunkerPromise.set_value(std::move(NewClunker));
+						});
+					MainService.run();
+				});
+			ClunkerCleanup = [&MainService, &ClunkerThread](void) mutable
 			{
-				ConnectClunker(
-					MainService,
-					asio::ip::tcp::endpoint(
-						asio::ip::address_v4::loopback(),
-						Port),
-					[&Clunker](std::shared_ptr<ClunkerControlT> NewClunker)
-					{
-						Clunker = std::move(NewClunker);
-					});
-				MainService.run();
-			});
+				MainService.stop();
+				ClunkerThread.join();
+			};
+			Clunker = std::move(ClunkerFuture.get());
 		}
 
 		auto Frame = [&Clunker](auto &&Callback)
@@ -263,7 +282,7 @@ int main(void)
 		// Creation
 		Frame([](CoreT &Core) 
 		{
-			AssertE(Core.ListChanges(0, 10).size(), 0);
+			AssertE(Core.ListChanges(0, 10).size(), 0u);
 		});
 
 		// Create new file, reopen
@@ -279,7 +298,7 @@ int main(void)
 			}
 
 			auto Changes = Core.ListChanges(0, 10);
-			AssertE(Changes.size(), 1);
+			AssertE(Changes.size(), 1u);
 			AssertE(Changes[0].ChangeID(), ChangeID);
 			Assert(!Core.GetHead(ChangeID));
 		});
@@ -298,7 +317,7 @@ int main(void)
 			}
 
 			auto Changes = Core.ListChanges(0, 10);
-			AssertE(Changes.size(), 1);
+			AssertE(Changes.size(), 1u);
 			AssertE(Changes[0], ChangeT(ChangeID, {}));
 			auto Head = Core.GetHead(ChangeID);
 			Assert(Head);
@@ -311,7 +330,7 @@ int main(void)
 			AssertE(Head->Meta().Executable(), false);
 
 			auto Heads = Core.ListDirHeads({}, 0, 10);
-			AssertE(Heads.size(), 1);
+			AssertE(Heads.size(), 1u);
 			AssertE(Heads[0].ChangeID().NodeID(), Head->ChangeID().NodeID());
 		});
 
@@ -331,7 +350,7 @@ int main(void)
 				
 				StorageID1 = *Core.GetHead(ChangeID1)->StorageID();
 				CompareStorage(Core, StorageID1, "hellog");
-				AssertE(Core.ListStorage(0, 10).size(), 1);
+				AssertE(Core.ListStorage(0, 10).size(), 1u);
 			}
 			{
 				ChangeID2 = GlobalChangeIDT(
@@ -349,7 +368,7 @@ int main(void)
 				AssertE(StorageID2, StorageID1);
 				CompareStorage(Core, StorageID2, "");
 				auto AllStorage = Core.ListStorage(0, 10);
-				AssertE(AllStorage.size(), 1);
+				AssertE(AllStorage.size(), 1u);
 			}
 			{
 				ChangeID3 = GlobalChangeIDT(
@@ -367,7 +386,7 @@ int main(void)
 				AssertE(StorageID3, StorageID2);
 				CompareStorage(Core, StorageID3, "whipeanut diva");
 				auto AllStorage = Core.ListStorage(0, 10);
-				AssertE(AllStorage.size(), 1);
+				AssertE(AllStorage.size(), 1u);
 			}
 			{
 				ChangeID4 = GlobalChangeIDT(
@@ -384,7 +403,7 @@ int main(void)
 					Assert(false);
 				}
 				catch (...) {}
-				AssertE(Core.ListStorage(0, 10).size(), 0);
+				AssertE(Core.ListStorage(0, 10).size(), 0u);
 			}
 		});
 		
@@ -402,12 +421,12 @@ int main(void)
 				Core.DefineChange(ChangeID, DefineHeadT({}, Meta1));
 
 				auto RootHeads = Core.ListDirHeads({}, 0, 10);
-				AssertE(RootHeads.size(), 1);
+				AssertE(RootHeads.size(), 1u);
 				AssertE(RootHeads[0].ChangeID().NodeID(), DirID);
 				auto SubHeads = Core.ListDirHeads(DirID, 0, 10);
-				AssertE(SubHeads.size(), 0);
+				AssertE(SubHeads.size(), 0u);
 				auto AllStorage = Core.ListStorage(0, 10);
-				AssertE(AllStorage.size(), 0);
+				AssertE(AllStorage.size(), 0u);
 			}
 			{
 				auto InstanceIndex = Core.GetThisInstance();
@@ -421,13 +440,13 @@ int main(void)
 				Core.DefineChange(ChangeID, DefineHeadT(AddData1, FileMeta));
 				
 				auto RootHeads = Core.ListDirHeads({}, 0, 10);
-				AssertE(RootHeads.size(), 1);
+				AssertE(RootHeads.size(), 1u);
 				AssertE(RootHeads[0].ChangeID().NodeID(), DirID);
 				auto SubHeads = Core.ListDirHeads(DirID, 0, 10);
-				AssertE(SubHeads.size(), 1);
+				AssertE(SubHeads.size(), 1u);
 				AssertE(SubHeads[0].ChangeID(), ChangeID);
 				auto AllStorage = Core.ListStorage(0, 10);
-				AssertE(AllStorage.size(), 1);
+				AssertE(AllStorage.size(), 1u);
 			}
 		});
 
@@ -446,7 +465,7 @@ int main(void)
 				Core.DefineChange(Change1, DefineHeadT(AddData1, Meta1));
 				
 				CompareStorage(Core, *Core.GetHead(Change1)->StorageID(), "hellog");
-				AssertE(Core.ListStorage(0, 10).size(), 1);
+				AssertE(Core.ListStorage(0, 10).size(), 1u);
 			}
 			
 			{
@@ -465,14 +484,14 @@ int main(void)
 			{
 				Core.DefineChange(Change2, DefineHeadT(AddData2, Meta1));
 
-				AssertE(Core.ListStorage(0, 10).size(), 2);
+				AssertE(Core.ListStorage(0, 10).size(), 2u);
 				CompareStorage(Core, *Core.GetHead(Change2)->StorageID(), "whipeanut diva");
 			}
 
 			{
 				Core.DefineChange(Change3, DefineHeadT(AddData3, Meta1));
 
-				AssertE(Core.ListStorage(0, 10).size(), 2);
+				AssertE(Core.ListStorage(0, 10).size(), 2u);
 				CompareStorage(Core, *Core.GetHead(Change3)->StorageID(), "woglog");
 			}
 		});
@@ -481,6 +500,12 @@ int main(void)
 	{
 		std::cerr << "---" << std::endl;
 		std::cerr << "Got system error: \n" << Error << std::endl;
+		return 1;
+	}
+	catch (AssertionErrorT const &Error)
+	{
+		std::cerr << "---" << std::endl;
+		std::cerr << "Got assertion error: \n" << Error << std::endl;
 		return 1;
 	}
 	catch (...) 

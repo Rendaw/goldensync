@@ -73,7 +73,7 @@ CoreT::CoreT(OptionalT<std::string> const &InstanceName, Filesystem::PathT const
 	if (Create)
 	{
 		if (!InstanceName) 
-			throw UserErrorT() << "You must specify an instance name for a new synch instance.";
+			throw USER_ERROR << "You must specify an instance name for a new synch instance.";
 
 		Root.CreateDirectory();
 		StorageRoot.CreateDirectory();
@@ -309,6 +309,14 @@ void CoreT::Handle(
 	OptionalT<HeadT> const &NewHead,
 	StorageChangesT const &StorageChanges)
 {
+	std::cout << "Handle(CTV1UpdateDeleteHead,\n"
+		"\tStorageID = " << StorageID << ",\n"
+		"\tStorageRefCount = " << StorageRefCount << ",\n"
+		"\tChangeID = " << ChangeID << ",\n"
+		"\tDeleteParent = " << DeleteParent << ",\n"
+		"\tNewHead = " << NewHead << ",\n"
+		"\tStorageChanges = " << StorageChanges << ",\n"
+		<< std::endl;
 	MissingRemoveListeners.Notify(ChangeID);
 	Database->DeleteMissing(GlobalChangeIDT(ChangeID.NodeID(), ChangeID.ChangeID()));
 	if (DeleteParent)
@@ -455,9 +463,10 @@ bool CoreT::Validate(void)
 
 	// Storage exists for relevant heads
 	// Change for each head exists
+	size_t HeadOffset = 0;
 	while (true)
 	{
-		auto Heads = ListHeads(0, ListSize);
+		auto Heads = ListHeads(HeadOffset, ListSize);
 		for (auto const &Head : Heads)
 		{
 			if (!Database->GetChange(Head.ChangeID()))
@@ -483,14 +492,16 @@ bool CoreT::Validate(void)
 			}
 		}
 		if (Heads.size() < ListSize) break;
+		HeadOffset += Heads.size();
 	}
 
 	// Storage exists for relevant missings
 	// Change exists for each missing
 	// No parent of a missing can have a missing
+	size_t MissingOffset = 0;
 	while (true)
 	{
-		auto Missings = ListMissing(0, ListSize);
+		auto Missings = ListMissing(MissingOffset, ListSize);
 		for (auto const &Missing : Missings)
 		{
 			auto PreChange = Database->GetChange(Missing.ChangeID());
@@ -537,6 +548,7 @@ bool CoreT::Validate(void)
 
 		}
 		if (Missings.size() < ListSize) break;
+		MissingOffset += Missings.size();
 	}
 
 	// All primary heads in each directory unique
@@ -558,9 +570,10 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 	constexpr size_t ListSize = 10;
 
 	OptionalT<NodeIDT> LastNode;
+	size_t ChangeOffset = 0;
 	while (true)
 	{
-		auto Changes = ListChanges(0, ListSize);
+		auto Changes = ListChanges(ChangeOffset, ListSize);
 		for (auto const &Change : Changes)
 		{
 			if (!LastNode || (*LastNode != Change.ChangeID().NodeID()))
@@ -588,13 +601,15 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 			Out.Write(StringT() << ";\n");
 		}
 		if (Changes.size() < ListSize) break;
+		ChangeOffset += Changes.size();
 	} 
 	if (LastNode)
 		Out.Write(StringT() << "}\n");
 
+	size_t MissingOffset = 0;
 	while (true)
 	{
-		auto Missings = ListMissing(0, ListSize);
+		auto Missings = ListMissing(MissingOffset, ListSize);
 		for (auto const &Missing : Missings)
 		{
 			Out.Write(StringT() << 
@@ -612,11 +627,13 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 					";\n");
 		}
 		if (Missings.size() < ListSize) break;
+		MissingOffset += Missings.size();
 	}
 
+	size_t HeadOffset = 0;
 	while (true)
 	{
-		auto Heads = ListHeads(0, ListSize);
+		auto Heads = ListHeads(HeadOffset, ListSize);
 		for (auto const &Head : Heads)
 		{
 			Out.Write(StringT() << 
@@ -633,11 +650,13 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 					";\n");
 		}
 		if (Heads.size() < ListSize) break;
+		HeadOffset += Heads.size();
 	}
 
+	size_t StorageOffset = 0;
 	while (true)
 	{
-		auto Storage = ListStorage(0, ListSize);
+		auto Storage = ListStorage(StorageOffset, ListSize);
 		for (auto const &AStorage : Storage)
 		{
 			Out.Write(StringT() << 
@@ -647,6 +666,7 @@ void CoreT::DumpGraphviz(std::string const &RawPath)
 				"};\n");
 		}
 		if (Storage.size() < ListSize) break;
+		StorageOffset += Storage.size();
 	}
 
 	Out.Write(StringT() << "\n}\n");

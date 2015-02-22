@@ -31,22 +31,35 @@ template <typename Type, typename OtherType, typename ...RemainingTypes>
 template <typename ProtoHandlerT, typename ...MessagesT> struct TransactorT
 {
 	TransactorT(Filesystem::PathT const &TransactionPath, ProtoHandlerT &Handler) : 
+		Log("transactor"),
 		TransactionPath(TransactionPath),
 		Handler(Handler)
 	{
+		LOG(Log, Debug, (StringT() << "Replaying transactions."));
 		TransactionPath.CreateDirectory();
 		TransactionPath.List([&](Filesystem::PathT &&Path, bool IsFile, bool IsDir)
 		{
+			LOG(Log, Info, (StringT() << "Recovering " << Path));
 			auto In = Filesystem::FileT::OpenRead(Path);
 			ReadBufferT Buffer;
 			while (In.Read(Buffer))
 			{
-				if (!Reader.Read(Buffer, Handler))
-					throw SystemErrorT() << "Could not read transaction file " << Path << ", file may be corrupt.";
+				try
+				{
+					Reader.Read(Buffer, Handler);
+				}
+				catch (SystemErrorT const &Error)
+				{ 
+					LOG(
+						Log, 
+						Info, 
+						StringT() << "Error reading transaction file " << Path << ": " << Error); 
+				}
 			}
 			Path.Delete();
 			return true;
 		});
+		LOG(Log, Debug, (StringT() << "Done replaying transactions."));
 	}
 
 	template <typename MessageT, typename ...ArgumentTypes> 
@@ -56,8 +69,14 @@ template <typename ProtoHandlerT, typename ...MessagesT> struct TransactorT
 			TypeIn<MessageT, MessagesT...>::Value, 
 			"MessageT is unregistered.  Type must be registered with callback in constructor.");
 		Filesystem::PathT ThreadPath = TransactionPath.Enter(StringT() << std::this_thread::get_id());
-		Filesystem::FileT::OpenWrite(ThreadPath).Write(MessageT::Write(Arguments...));
-		Handler.Handle(MessageT(), std::forward<ArgumentTypes const &>(Arguments)...);
+		LOG(Log, Info, (StringT() << "Starting transaction " << ThreadPath));
+		Filesystem::FileT::OpenWrite(ThreadPath).Write(
+			MessageT::Write(std::forward<ArgumentTypes const &>(Arguments)...));
+		LOG(Log, Info, (StringT() << "Wrote transaction " << ThreadPath));
+		Handler.Handle(
+			MessageT(), 
+			std::forward<ArgumentTypes const &>(Arguments)...);
+		LOG(Log, Info, (StringT() << "Ending transaction " << ThreadPath));
 		ThreadPath.Delete();
 	}
 
@@ -68,6 +87,7 @@ template <typename ProtoHandlerT, typename ...MessagesT> struct TransactorT
 	}
 
 	private:
+		BasicLogT Log;
 		Filesystem::PathT const TransactionPath;
 		ProtoHandlerT &Handler;
 		Protocol::ReaderT<MessagesT...> Reader;

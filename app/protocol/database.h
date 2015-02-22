@@ -20,7 +20,7 @@ struct SQLDatabaseT
 	{
 		if ((!Path && (sqlite3_open(":memory:", &Context) != 0)) ||
 			(Path && (sqlite3_open(Path->Render().c_str(), &Context) != 0)))
-			throw SystemErrorT() << "Could not create database: " << sqlite3_errmsg(Context);
+			throw SYSTEM_ERROR << "Could not create database: " << sqlite3_errmsg(Context);
 		if (sqlite3_config(SQLITE_CONFIG_SINGLETHREAD) != SQLITE_OK)
 			LOG(Log, Warning, "Could not disable sqlite locking.");
 #ifndef NDEBUG
@@ -44,7 +44,7 @@ struct SQLDatabaseT
 			Template(Template), BaseContext(Base->Context), Context(nullptr)
 		{
 			if (sqlite3_prepare_v2(BaseContext, Template, -1, &Context, 0) != SQLITE_OK)
-				throw SystemErrorT() << "Could not prepare query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
+				throw SYSTEM_ERROR << "Could not prepare query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 		}
 
 		StatementT(StatementT<std::tuple<ResultT...>(ArgumentsT...)> &&Other) : 
@@ -74,7 +74,7 @@ struct SQLDatabaseT
 				int Result = sqlite3_step(Context);
 				if (Result == SQLITE_DONE) break;
 				if (Result != SQLITE_ROW)
-					throw SystemErrorT() << "Could not execute query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
+					throw SYSTEM_ERROR << "Could not execute query \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 				int UnbindIndex = 0;
 				Unbind<ResultT...>(Context, UnbindIndex, Function);
 			}

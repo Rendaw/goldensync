@@ -18,7 +18,7 @@ template <> struct DBImplm<std::string>
 		std::string const &Value)
 	{
 		if (sqlite3_bind_text(Context, Index, Value.c_str(), static_cast<int>(Value.size()), nullptr) != SQLITE_OK)
-			throw SystemErrorT() << "Could not bind argument " << Index << " to \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
+			throw SYSTEM_ERROR << "Could not bind argument " << Index << " to \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 		++Index;
 	}
 	
@@ -67,7 +67,7 @@ template <typename IntegerT>
 		else sqlite3_bind_int64(Context, Index, *reinterpret_cast<int64_t const *>(&Value));
 
 		if (Result != SQLITE_OK)
-			throw SystemErrorT() << "Could not bind argument " << Index << " to \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
+			throw SYSTEM_ERROR << "Could not bind argument " << Index << " to \"" << Template << "\": " << sqlite3_errmsg(BaseContext);
 		++Index;
 	}
 	

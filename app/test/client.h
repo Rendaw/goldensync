@@ -170,13 +170,15 @@ void ConnectClunker(
 				}
 				else
 				{
-					throw SystemErrorT() << "Unknown message type [" << Type << "]";
+					throw SYSTEM_ERROR << "Unknown message type [" << Type << "]";
 				}
 			});
 
 			LoopRead(std::move(Connection), [Reader](ReadBufferT &Buffer)
 			{
+				std::cout << "feed: [" << std::string((char const *)Buffer.FilledStart(), Buffer.Filled()) << "]" << std::endl;
 				auto Consumed = Reader->feed((char const *)Buffer.FilledStart(), Buffer.Filled(), false);
+				std::cout << "consume: " << Consumed << std::endl;
 				Buffer.Consume(Consumed);
 				return true;
 			});

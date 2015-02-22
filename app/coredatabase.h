@@ -98,7 +98,7 @@ struct CoreDatabaseBaseT : SQLDatabaseT
 			switch ((CoreDatabaseVersionT)Version)
 			{
 				case CoreDatabaseVersionT::Latest: break;
-				default: throw SystemErrorT() << "Unknown database version " << Version;;
+				default: throw SYSTEM_ERROR << "Unknown database version " << Version;;
 			}
 		}
 	}
@@ -196,7 +196,7 @@ struct CoreDatabaseT : CoreDatabaseBaseT
 		GetHead(this,
 			"SELECT * FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ? LIMIT 1"),
 		InsertHead(this,
-			"INSERT INTO \"Heads\" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+			"INSERT OR IGNORE INTO \"Heads\" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
 		DeleteHead(this,
 			"DELETE FROM \"Heads\" WHERE \"NodeInstance\" = ? AND \"NodeIndex\" = ? AND \"ChangeInstance\" = ? AND \"ChangeIndex\" = ?"),
 
